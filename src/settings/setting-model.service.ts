@@ -9,16 +9,19 @@ export class SettingModelService<V extends object> {
   constructor(
     @InjectModel(SettingEntity.name)
     private readonly settingModel: Model<SettingDocument>,
+    private readonly DEFAULT: V,
   ) {}
 
-  async get<K extends keyof V>(key: K, DEFAULT: V[K]): Promise<V[K]> {
-    const setting = await this.settingModel.findOne({ key: key as string }).lean();
-    return _.defaultsDeep({}, setting?.value || {}, DEFAULT) as V[K];
+  async get<K extends keyof V>(key: K): Promise<V[K]> {
+    const setting = await this.settingModel
+      .findOne({ key: key as string })
+      .lean();
+    return _.defaultsDeep({}, setting?.value || {}, this.DEFAULT[key]) as V[K];
   }
 
-  async set<K extends keyof V>(key: K, value: Partial<V[K]>, DEFAULT: V[K]) {
-    const old = await this.get(key, DEFAULT);
-    const merge = _.merge({}, DEFAULT, old, value);
+  async set<K extends keyof V>(key: K, value: Partial<V[K]>) {
+    const old = await this.get(key);
+    const merge = _.merge({}, this.DEFAULT[key], old, value);
     await this.settingModel.updateOne(
       { key: key as string },
       { $set: { value: merge, updatedAt: new Date() } },
@@ -26,13 +29,12 @@ export class SettingModelService<V extends object> {
     );
   }
 
-  async reset(DEFAULT: V) {
+  async reset(defaultValue: Partial<V> = {}) {
     await this.settingModel.deleteMany({});
-    await this.settingModel.insertMany(
-      Object.keys(DEFAULT).map((key) => ({
-        key,
-        value: DEFAULT[key as keyof V],
-      })),
-    );
+    const entries = Object.entries(this.DEFAULT).map(([key, value]) => ({
+      key,
+      value: _.merge({}, value, defaultValue[key as keyof V]),
+    }));
+    await this.settingModel.insertMany(entries);
   }
 }

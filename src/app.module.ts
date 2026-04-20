@@ -1,15 +1,16 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ScheduleModule } from '@nestjs/schedule';
-import { APP_GUARD } from '@nestjs/core';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { DiscordModule } from './shared/discord/discord.module';
-import { SettingsModule } from './settings/settings.module';
-import { StockModule } from './stock/stock.module';
 import { ApiKeyGuard } from './common/guards/api-key.guard';
+import { SettingsModule } from './settings/settings.module';
+import { DiscordModule } from './shared/discord/discord.module';
+import { StockModule } from './stock/stock.module';
+import { WatchedSymbolModule } from './watched-symbol/watched-symbol.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ApiKeyGuard } from './common/guards/api-key.guard';
     }),
     DiscordModule,
     SettingsModule,
+    WatchedSymbolModule,
     StockModule,
   ],
   controllers: [AppController],

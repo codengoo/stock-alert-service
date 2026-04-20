@@ -13,6 +13,24 @@ export class WatchedSymbol {
 
   @Prop()
   note?: string;
+
+  /** Per-symbol threshold overrides — null means use global default from Settings */
+  @Prop({ type: Number, default: null })
+  alertThresholdPercent?: number | null;
+
+  @Prop({ type: Number, default: null })
+  stopLossPercent?: number | null;
+
+  @Prop({ type: Number, default: null })
+  takeProfitPercent?: number | null;
+
+  /** Reference buy-price used for stop-loss / take-profit calculation */
+  @Prop({ type: Number, default: null })
+  buyPrice?: number | null;
+
+  /** Suppress alerts until this timestamp (set by user snooze or auto-snooze after alert) */
+  @Prop({ type: Date, default: null })
+  snoozeUntil?: Date | null;
 }
 
 export const WatchedSymbolSchema = SchemaFactory.createForClass(WatchedSymbol);
