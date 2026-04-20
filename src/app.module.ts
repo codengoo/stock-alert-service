@@ -14,6 +14,7 @@ import { ApiKeyGuard } from './common/guards/api-key.guard';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
@@ -21,7 +22,6 @@ import { ApiKeyGuard } from './common/guards/api-key.guard';
       }),
       inject: [ConfigService],
     }),
-    ScheduleModule.forRoot(),
     DiscordModule,
     SettingsModule,
     StockModule,

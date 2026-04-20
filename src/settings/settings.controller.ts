@@ -3,91 +3,59 @@ import {
   Controller,
   Delete,
   Get,
-  HttpCode,
-  HttpStatus,
-  Param,
   Put,
 } from '@nestjs/common';
 import {
-  ApiTags,
-  ApiSecurity,
-  ApiOperation,
-  ApiParam,
   ApiBody,
   ApiOkResponse,
-  ApiNoContentResponse,
-  ApiNotFoundResponse,
-  ApiUnauthorizedResponse,
+  ApiOperation,
+  ApiTags
 } from '@nestjs/swagger';
-import { SettingsService } from './settings.service';
 import { UpsertSettingDto } from './dto/upsert-setting.dto';
-
+import { SETTINGS_CONFIG, SettingsMap } from './settings.config';
+import { SettingsService } from './settings.service';
 @ApiTags('Settings')
-@ApiSecurity('x-api-key')
-@ApiUnauthorizedResponse({ description: 'Header x-api-key thiếu hoặc không hợp lệ' })
 @Controller('settings')
 export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
   @Get()
   @ApiOperation({
-    summary: 'Lấy toàn bộ danh sách settings',
-    description: 'Trả về tất cả key-value settings đang được lưu trong MongoDB.',
+    summary: 'Lấy toàn bộ settings',
+    description:
+      'Trả về tất cả settings dưới dạng key-value object. ' +
+      'Các key chưa có trong DB sẽ được điền giá trị mặc định.\n\n' +
+      '| Key | Mô tả | Mặc định |\n' +
+      '|-----|-------|----------|\n' +
+      Object.entries(SETTINGS_CONFIG)
+        .map(([k, v]) => `| \`${k}\` | ${v.description} | \`${v.defaultValue}\` |`)
+        .join('\n'),
   })
-  @ApiOkResponse({ description: 'Danh sách settings' })
-  findAll() {
+  @ApiOkResponse({ description: 'Settings map với đầy đủ tất cả key' })
+  findAll(): Promise<SettingsMap> {
     return this.settingsService.findAll();
-  }
-
-  @Get(':key')
-  @ApiOperation({
-    summary: 'Lấy setting theo key',
-    description: 'Tìm một setting theo tên key. Trả về 404 nếu không tồn tại.',
-  })
-  @ApiParam({
-    name: 'key',
-    description: 'Tên key của setting',
-    example: 'stock.alertThresholdPercent',
-  })
-  @ApiOkResponse({ description: 'Setting tìm thấy' })
-  @ApiNotFoundResponse({ description: 'Setting không tồn tại' })
-  findOne(@Param('key') key: string) {
-    return this.settingsService.findByKey(key);
   }
 
   @Put()
   @ApiOperation({
-    summary: 'Tạo hoặc cập nhật setting (upsert)',
+    summary: 'Cập nhật một setting',
     description:
-      'Nếu key đã tồn tại thì cập nhật value, nếu chưa thì tạo mới.\n\n' +
-      '**Các key hệ thống:**\n' +
-      '| Key | Mô tả | Mặc định |\n' +
-      '|-----|-------|----------|\n' +
-      '| `stock.apiBaseUrl` | URL của stock-alert FastAPI | `http://localhost:8000` |\n' +
-      '| `stock.apiSource` | Nguồn dữ liệu mặc định | `KBS` |\n' +
-      '| `stock.alertThresholdPercent` | Ngưỡng % biến động giá để gửi cảnh báo | `3` |\n' +
-      '| `discord.alertChannelId` | Channel ID Discord nhận cảnh báo | — |',
+      'Cập nhật giá trị của một setting theo key. ' +
+      'Chỉ các key được định nghĩa trong hệ thống mới được chấp nhận.',
   })
   @ApiBody({ type: UpsertSettingDto })
-  @ApiOkResponse({ description: 'Setting sau khi upsert' })
-  upsert(@Body() dto: UpsertSettingDto) {
+  @ApiOkResponse({ description: 'Settings map sau khi cập nhật' })
+  upsert(@Body() dto: UpsertSettingDto): Promise<SettingsMap> {
     return this.settingsService.upsert(dto);
   }
 
-  @Delete(':key')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @Delete('reset')
   @ApiOperation({
-    summary: 'Xóa setting theo key',
-    description: 'Xóa vĩnh viễn một setting. Trả về 404 nếu key không tồn tại.',
+    summary: 'Reset tất cả settings về mặc định',
+    description: 'Xóa tất cả settings trong DB và khởi tạo lại với giá trị mặc định.',
   })
-  @ApiParam({
-    name: 'key',
-    description: 'Tên key của setting cần xóa',
-    example: 'stock.alertThresholdPercent',
-  })
-  @ApiNoContentResponse({ description: 'Xóa thành công' })
-  @ApiNotFoundResponse({ description: 'Setting không tồn tại' })
-  delete(@Param('key') key: string) {
-    return this.settingsService.delete(key);
+  @ApiOkResponse({ description: 'Settings map sau khi reset' })
+  resetAll(): Promise<SettingsMap> {
+    return this.settingsService.resetAll();
   }
 }

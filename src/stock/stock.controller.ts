@@ -25,10 +25,9 @@ import {
 } from '@nestjs/swagger';
 import { StockService } from './stock.service';
 import { AddWatchedSymbolDto } from './dto/add-watched-symbol.dto';
+import { API_KEY_HEADER } from '../common/constants/api-key.constant';
 
 @ApiTags('Stock')
-@ApiSecurity('x-api-key')
-@ApiUnauthorizedResponse({ description: 'Header x-api-key thiếu hoặc không hợp lệ' })
 @Controller('stock')
 export class StockController {
   constructor(private readonly stockService: StockService) {}

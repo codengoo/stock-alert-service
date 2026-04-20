@@ -7,16 +7,16 @@ import { firstValueFrom } from 'rxjs';
 
 import { DiscordService } from '../shared/discord/discord.service';
 import { SettingsService } from '../settings/settings.service';
+import { SettingKey } from '../settings/settings.config';
 import { WatchedSymbol, WatchedSymbolDocument } from '../schemas/watched-symbol.schema';
 import { AddWatchedSymbolDto } from './dto/add-watched-symbol.dto';
 
-/** Keys stored in the settings collection */
 const SETTING_KEYS = {
   STOCK_API_BASE_URL: 'stock.apiBaseUrl',
   STOCK_API_SOURCE: 'stock.apiSource',
   DISCORD_CHANNEL_ID: 'discord.alertChannelId',
   ALERT_THRESHOLD_PERCENT: 'stock.alertThresholdPercent',
-};
+} as const satisfies Record<string, SettingKey>;
 
 interface PriceBoardItem {
   symbol: string;
@@ -80,14 +80,8 @@ export class StockService {
   // ─── Price-board proxy endpoints ─────────────────────────────────────────
 
   async getPriceBoard(symbols: string[], source?: string) {
-    const baseUrl = await this.settingsService.getValue<string>(
-      SETTING_KEYS.STOCK_API_BASE_URL,
-      'http://localhost:8000',
-    );
-    const defaultSource = await this.settingsService.getValue<string>(
-      SETTING_KEYS.STOCK_API_SOURCE,
-      'KBS',
-    );
+    const baseUrl = await this.settingsService.getValue(SETTING_KEYS.STOCK_API_BASE_URL);
+    const defaultSource = await this.settingsService.getValue(SETTING_KEYS.STOCK_API_SOURCE);
 
     const params = new URLSearchParams({
       symbols: symbols.map((s) => s.toUpperCase()).join(','),
@@ -101,14 +95,8 @@ export class StockService {
   }
 
   async getIntraday(symbol: string, pageSize = 100, source?: string) {
-    const baseUrl = await this.settingsService.getValue<string>(
-      SETTING_KEYS.STOCK_API_BASE_URL,
-      'http://localhost:8000',
-    );
-    const defaultSource = await this.settingsService.getValue<string>(
-      SETTING_KEYS.STOCK_API_SOURCE,
-      'KBS',
-    );
+    const baseUrl = await this.settingsService.getValue(SETTING_KEYS.STOCK_API_BASE_URL);
+    const defaultSource = await this.settingsService.getValue(SETTING_KEYS.STOCK_API_SOURCE);
 
     const params = new URLSearchParams({
       page_size: String(pageSize),
@@ -127,14 +115,8 @@ export class StockService {
     symbol: string,
     opts: { start?: string; end?: string; length?: number; interval?: string; source?: string },
   ) {
-    const baseUrl = await this.settingsService.getValue<string>(
-      SETTING_KEYS.STOCK_API_BASE_URL,
-      'http://localhost:8000',
-    );
-    const defaultSource = await this.settingsService.getValue<string>(
-      SETTING_KEYS.STOCK_API_SOURCE,
-      'KBS',
-    );
+    const baseUrl = await this.settingsService.getValue(SETTING_KEYS.STOCK_API_BASE_URL);
+    const defaultSource = await this.settingsService.getValue(SETTING_KEYS.STOCK_API_SOURCE);
 
     const params = new URLSearchParams({ source: opts.source ?? defaultSource });
     if (opts.length) params.set('length', String(opts.length));
@@ -151,14 +133,8 @@ export class StockService {
   }
 
   async getListing(source?: string) {
-    const baseUrl = await this.settingsService.getValue<string>(
-      SETTING_KEYS.STOCK_API_BASE_URL,
-      'http://localhost:8000',
-    );
-    const defaultSource = await this.settingsService.getValue<string>(
-      SETTING_KEYS.STOCK_API_SOURCE,
-      'KBS',
-    );
+    const baseUrl = await this.settingsService.getValue(SETTING_KEYS.STOCK_API_BASE_URL);
+    const defaultSource = await this.settingsService.getValue(SETTING_KEYS.STOCK_API_SOURCE);
 
     const params = new URLSearchParams({ source: source ?? defaultSource });
     const { data } = await firstValueFrom(
@@ -168,14 +144,8 @@ export class StockService {
   }
 
   async getCompany(symbol: string, source?: string) {
-    const baseUrl = await this.settingsService.getValue<string>(
-      SETTING_KEYS.STOCK_API_BASE_URL,
-      'http://localhost:8000',
-    );
-    const defaultSource = await this.settingsService.getValue<string>(
-      SETTING_KEYS.STOCK_API_SOURCE,
-      'KBS',
-    );
+    const baseUrl = await this.settingsService.getValue(SETTING_KEYS.STOCK_API_BASE_URL);
+    const defaultSource = await this.settingsService.getValue(SETTING_KEYS.STOCK_API_SOURCE);
 
     const params = new URLSearchParams({ source: source ?? defaultSource });
     const { data } = await firstValueFrom(
@@ -211,14 +181,8 @@ export class StockService {
     const items: PriceBoardItem[] = board?.data ?? [];
     if (!items.length) return;
 
-    const thresholdPercent = await this.settingsService.getValue<number>(
-      SETTING_KEYS.ALERT_THRESHOLD_PERCENT,
-      3,
-    );
-    const channelId = await this.settingsService.getValue<string>(
-      SETTING_KEYS.DISCORD_CHANNEL_ID,
-      '',
-    );
+    const thresholdPercent = await this.settingsService.getValue(SETTING_KEYS.ALERT_THRESHOLD_PERCENT);
+    const channelId = await this.settingsService.getValue(SETTING_KEYS.DISCORD_CHANNEL_ID);
 
     for (const item of items) {
       const sym = String(item.symbol).toUpperCase();

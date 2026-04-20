@@ -8,6 +8,7 @@ import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { API_KEY_HEADER } from '../constants/api-key.constant';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
@@ -27,7 +28,10 @@ export class ApiKeyGuard implements CanActivate {
     if (!expectedKey) return true; // guard is disabled when API_KEY is not configured
 
     const request = context.switchToHttp().getRequest<Request>();
-    const provided = request.headers['x-api-key'];
+    const provided = request.headers[API_KEY_HEADER];
+
+    console.log(request.headers);
+    
 
     if (!provided || provided !== expectedKey) {
       throw new UnauthorizedException('Invalid or missing x-api-key header');
