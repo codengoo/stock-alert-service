@@ -1,16 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsNotEmpty, IsString } from 'class-validator';
-import { SETTING_KEYS, SettingKey } from '../settings.config';
+import { IsNotEmpty, IsString } from 'class-validator';
+import { DEFAULT_SETTING } from '../constants';
 
 export class UpsertSettingDto {
   @ApiProperty({
     description: 'Key của setting cần cập nhật',
-    enum: SETTING_KEYS,
-    example: 'stock.alertThresholdPercent',
+    example: 'threshold',
   })
   @IsString()
-  @IsIn(SETTING_KEYS)
-  key: SettingKey;
+  key:  keyof typeof DEFAULT_SETTING;
 
   @ApiProperty({
     description: 'Giá trị mới của setting (string, number, boolean hoặc object)',
