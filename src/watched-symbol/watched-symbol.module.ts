@@ -1,4 +1,5 @@
 import { SymbolSlashCommandService } from '@/discord/commands/watch-symbold.interaction';
+import { StockApiModule } from '@/shared/stock/stock.module';
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { WatchedSymbol, WatchedSymbolSchema } from '../schemas/watched-symbol.schema';
@@ -10,6 +11,7 @@ import { WatchedSymbolService } from './watched-symbol.service';
     MongooseModule.forFeature([
       { name: WatchedSymbol.name, schema: WatchedSymbolSchema },
     ]),
+    StockApiModule,
   ],
   controllers: [WatchedSymbolController],
   providers: [WatchedSymbolService, SymbolSlashCommandService],

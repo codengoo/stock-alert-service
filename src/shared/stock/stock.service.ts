@@ -1,6 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
-import { PriceBoardItem } from './interfaces';
+import {
+  ESymbolHistoryInterval,
+  ISymbolHistory,
+  ISymbolHistoryFilter,
+  ISymbolName,
+  PriceBoardItem,
+} from './interfaces';
 
 @Injectable()
 export class StockApiService {
@@ -24,16 +30,41 @@ export class StockApiService {
     return response.data.data;
   }
 
-  public async checkExist(
-    symbols: string[],
-  ): Promise<{ [symbol: string]: boolean }> {
-    const response = await this.getPriceBoard(symbols);
-    const existMap: { [symbol: string]: boolean } = {};
+  public async listSymbols() {
+    const url = `/listing`;
+    const response = await this.client.get<{
+      data: ISymbolName[];
+      source: string;
+    }>(url);
+
+    return response.data.data;
+  }
+
+  public async checkExist(symbols: string[]) {
+    const response = await this.listSymbols();
+    const existMap: { [symbol: string]: ISymbolName } = {};
 
     symbols.forEach((symbol) => {
-      existMap[symbol] = response.some((item) => item.symbol === symbol && item.close_price !== 0);
+      existMap[symbol] = response.find(
+        (item) => item.symbol === symbol && item.organ_name !== '',
+      );
     });
-    
+
     return existMap;
+  }
+
+  public async getHistoricalData(symbol: string, filter: ISymbolHistoryFilter) {
+    const url = `/quote/history/${symbol}`;
+
+    const response = await this.client.get<{
+      data: ISymbolHistory[];
+      interval: ESymbolHistoryInterval;
+      source: string;
+      symbol: string;
+    }>(url, {
+      params: filter,
+    });
+
+    return response.data.data;
   }
 }

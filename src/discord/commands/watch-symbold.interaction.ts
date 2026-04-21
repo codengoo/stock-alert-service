@@ -1,9 +1,10 @@
+import { StockApiService } from '@/shared/stock/stock.service';
 import { WatchedSymbolService } from '@/watched-symbol/watched-symbol.service';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
-    ApplicationCommandOptionType,
-    ApplicationCommandType,
-    ChatInputCommandInteraction,
+  ApplicationCommandOptionType,
+  ApplicationCommandType,
+  ChatInputCommandInteraction,
 } from 'discord.js';
 import { DiscordInteractionService } from '../discord-interaction.service';
 import { DiscordService } from '../discord.service';
@@ -16,6 +17,7 @@ export class SymbolSlashCommandService implements OnModuleInit {
     private readonly discordService: DiscordService,
     private readonly discordInteractionService: DiscordInteractionService,
     private readonly watchedSymbolService: WatchedSymbolService,
+    private readonly stockApiService: StockApiService,
   ) {}
 
   onModuleInit() {
@@ -47,14 +49,16 @@ export class SymbolSlashCommandService implements OnModuleInit {
               {
                 type: ApplicationCommandOptionType.Number,
                 name: 'stop_loss',
-                description: 'Ngưỡng cắt lỗ % (bỏ qua = dùng mặc định hệ thống)',
+                description:
+                  'Ngưỡng cắt lỗ % (bỏ qua = dùng mặc định hệ thống)',
                 required: false,
                 min_value: 0,
               },
               {
                 type: ApplicationCommandOptionType.Number,
                 name: 'take_profit',
-                description: 'Ngưỡng chốt lời % (bỏ qua = dùng mặc định hệ thống)',
+                description:
+                  'Ngưỡng chốt lời % (bỏ qua = dùng mặc định hệ thống)',
                 required: false,
                 min_value: 0,
               },
@@ -85,7 +89,9 @@ export class SymbolSlashCommandService implements OnModuleInit {
 
   // ─── Dispatcher ──────────────────────────────────────────────────────────
 
-  private async handleSymbolCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  private async handleSymbolCommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
     const sub = interaction.options.getSubcommand();
     if (sub === 'add') {
       await this.handleAdd(interaction);
@@ -96,15 +102,28 @@ export class SymbolSlashCommandService implements OnModuleInit {
 
   // ─── /symbol add ─────────────────────────────────────────────────────────
 
-  private async handleAdd(interaction: ChatInputCommandInteraction): Promise<void> {
+  private async handleAdd(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
     await interaction.deferReply({ ephemeral: true });
 
     const symbol = interaction.options.getString('symbol', true).toUpperCase();
-    const buyPrice = interaction.options.getNumber('buy_price', true);
+    const buyPriceRaw = interaction.options.getNumber('buy_price', true);
+    const buyPrice = buyPriceRaw * 1000;
     const stopLoss = interaction.options.getNumber('stop_loss') ?? undefined;
-    const takeProfit = interaction.options.getNumber('take_profit') ?? undefined;
+    const takeProfit =
+      interaction.options.getNumber('take_profit') ?? undefined;
 
     try {
+      // Kiểm tra symbol có tồn tại trên sàn không
+      const existMap = await this.stockApiService.checkExist([symbol]);
+      if (!existMap[symbol]) {
+        await interaction.editReply(
+          `❌ Mã **${symbol}** không tồn tại hoặc không có dữ liệu giá.`,
+        );
+        return;
+      }
+
       await this.watchedSymbolService.create({
         symbol,
         buyPrice,
@@ -113,8 +132,8 @@ export class SymbolSlashCommandService implements OnModuleInit {
       });
 
       const lines: string[] = [
-        `✅ Đã thêm **${symbol}** vào danh sách theo dõi.`,
-        `💰 Giá mua: **${buyPrice.toLocaleString('vi-VN')}**`,
+        `✅ Đã thêm/cập nhật **${symbol}** (${existMap[symbol].organ_name}) vào danh sách theo dõi.`,
+        `💰 Giá mua: **${buyPrice.toLocaleString('vi-VN')}** (${buyPriceRaw.toLocaleString('vi-VN')} × 1000)`,
       ];
       if (stopLoss != null) lines.push(`🔴 Cắt lỗ: **${stopLoss}%**`);
       if (takeProfit != null) lines.push(`🟢 Chốt lời: **${takeProfit}%**`);
@@ -130,17 +149,23 @@ export class SymbolSlashCommandService implements OnModuleInit {
 
   // ─── /symbol remove ───────────────────────────────────────────────────────
 
-  private async handleRemove(interaction: ChatInputCommandInteraction): Promise<void> {
+  private async handleRemove(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
     await interaction.deferReply({ ephemeral: true });
 
     const symbol = interaction.options.getString('symbol', true).toUpperCase();
 
     try {
       await this.watchedSymbolService.remove(symbol);
-      await interaction.editReply(`🗑️ Đã xóa **${symbol}** khỏi danh sách theo dõi.`);
+      await interaction.editReply(
+        `🗑️ Đã xóa **${symbol}** khỏi danh sách theo dõi.`,
+      );
     } catch (err) {
       this.logger.error(`Failed to remove symbol ${symbol}`, err);
-      await interaction.editReply(`❌ Không tìm thấy **${symbol}** trong danh sách.`);
+      await interaction.editReply(
+        `❌ Không tìm thấy **${symbol}** trong danh sách.`,
+      );
     }
   }
 }
