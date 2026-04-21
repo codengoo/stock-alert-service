@@ -1,8 +1,9 @@
+import { SymbolSlashCommandService } from '@/discord/commands/watch-symbold.interaction';
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { WatchedSymbol, WatchedSymbolSchema } from '../schemas/watched-symbol.schema';
-import { WatchedSymbolService } from './watched-symbol.service';
 import { WatchedSymbolController } from './watched-symbol.controller';
+import { WatchedSymbolService } from './watched-symbol.service';
 
 @Module({
   imports: [
@@ -11,7 +12,7 @@ import { WatchedSymbolController } from './watched-symbol.controller';
     ]),
   ],
   controllers: [WatchedSymbolController],
-  providers: [WatchedSymbolService],
+  providers: [WatchedSymbolService, SymbolSlashCommandService],
   exports: [WatchedSymbolService],
 })
 export class WatchedSymbolModule {}

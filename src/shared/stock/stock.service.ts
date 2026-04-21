@@ -9,7 +9,7 @@ export class StockApiService {
     baseURL: 'http://localhost:8000',
     timeout: 30000,
   });
-  
+
   constructor() {}
 
   public async getPriceBoard(symbols: string[]): Promise<PriceBoardItem[]> {
@@ -22,5 +22,18 @@ export class StockApiService {
       params: { symbols: symbols.join(',') },
     });
     return response.data.data;
+  }
+
+  public async checkExist(
+    symbols: string[],
+  ): Promise<{ [symbol: string]: boolean }> {
+    const response = await this.getPriceBoard(symbols);
+    const existMap: { [symbol: string]: boolean } = {};
+
+    symbols.forEach((symbol) => {
+      existMap[symbol] = response.some((item) => item.symbol === symbol && item.close_price !== 0);
+    });
+    
+    return existMap;
   }
 }
