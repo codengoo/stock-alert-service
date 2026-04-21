@@ -1,20 +1,10 @@
-import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
 
+import { PriceBoardItem, StockApiService } from '@/shared/stock';
+import { Cron } from '@nestjs/schedule';
 import { SettingsService } from '../settings/settings.service';
-import { DiscordService } from '../shared/discord/discord.service';
+import { DiscordEmbed, DiscordService } from '../shared/discord/discord.service';
 import { WatchedSymbolService } from '../watched-symbol/watched-symbol.service';
-
-interface PriceBoardItem {
-  symbol: string;
-  /** current price (VND) */
-  price: number;
-  /** reference / base price used for change calculation */
-  ref_price: number;
-  change: number;
-  pct_change: number;
-  [key: string]: unknown;
-}
 
 /** Minimum auto-snooze applied after any alert fires (prevents per-minute spam) */
 const AUTO_SNOOZE_MS = 5 * 60_000;
@@ -23,228 +13,109 @@ const AUTO_SNOOZE_MS = 5 * 60_000;
 export class StockService {
   private readonly logger = new Logger(StockService.name);
 
-  /** In-memory snapshot of the last known prices { SYMBOL -> price } */
-  private lastPrices = new Map<string, number>();
-
   constructor(
-    private readonly httpService: HttpService,
     private readonly discordService: DiscordService,
     private readonly settingsService: SettingsService,
     private readonly watchedSymbolService: WatchedSymbolService,
+    private readonly stockApiService: StockApiService,
   ) {}
 
   // ─── Scheduled price-alert job ────────────────────────────────────────────
 
   /** Runs every minute during trading hours (Mon–Fri, 09:00–15:30 ICT = 02:00–08:30 UTC) */
-  // @Cron('*/1 2-8 * * 1-5')
-  // async checkPriceAlerts() {
-  //   const activeSymbols = await this.watchedSymbolService.findAllActive();
-  //   if (activeSymbols.length === 0) return;
+  @Cron('*/1 9-11,13-15 * * 1-5')
+  async checkPriceAlerts() {
+    this.logger.debug('Running scheduled price alert check...');
+    const activeSymbols = await this.watchedSymbolService.findAllActive();
+    if (activeSymbols.length === 0) return;
 
-  //   const symbolNames = activeSymbols.map((s) => s.symbol);
+    const symbolNames = activeSymbols.map((s) => s.symbol);
+    const board = await this.stockApiService.getPriceBoard(symbolNames);
 
-  //   let board: { data: PriceBoardItem[] };
-  //   try {
-  //     board = await this.getPriceBoard(symbolNames);
-  //   } catch (err) {
-  //     this.logger.error('Failed to fetch price board for alert check', err);
-  //     return;
-  //   }
+    const items: PriceBoardItem[] = board ?? [];
+    if (!items.length) return;
 
-  //   const items: PriceBoardItem[] = board?.data ?? [];
-  //   if (!items.length) return;
+    // Load global threshold defaults once per cron tick
+    const globalThresholds = await this.settingsService.getThresholdSettings();
 
-  //   // Load global threshold defaults once per cron tick
-  //   const globalThresholds = await this.settingsService.getThresholdSettings();
-  //   const channelId = await this.settingsService.getValue('discord.alertChannelId');
+    for (const item of items) {
+      const sym = item.symbol.toUpperCase();
+      const watchedEntry = activeSymbols.find((s) => s.symbol === sym);
+      if (!watchedEntry) continue;
 
-  //   for (const item of items) {
-  //     const sym = String(item.symbol).toUpperCase();
-  //     const currentPrice = Number(item.price);
-  //     const pctChange = Number(item.pct_change);
+      const currentPrice = Number(item.close_price);
+      const referencePrice = Number(watchedEntry.buyPrice);
+      if (isNaN(currentPrice) || isNaN(referencePrice)) continue;
+      const pctChange =
+        ((currentPrice - referencePrice) / referencePrice) * 100;
 
-  //     if (isNaN(currentPrice) || isNaN(pctChange)) continue;
+      const lowerBound =
+        watchedEntry.stopLossPercent ?? globalThresholds.stopLossPercent;
+      const upperBound =
+        watchedEntry.takeProfitPercent ?? globalThresholds.takeProfitPercent;
 
-  //     const watchedEntry = activeSymbols.find((s) => s.symbol === sym);
-  //     if (!watchedEntry) continue;
+      if (watchedEntry.snoozeUntil && watchedEntry.snoozeUntil > new Date()) {
+        this.logger.debug(
+          `Skipping ${sym} due to active snooze until ${watchedEntry.snoozeUntil.toISOString()}`,
+        );
+        continue;
+      }
 
-  //     const last = this.lastPrices.get(sym);
+      if (pctChange < -lowerBound || pctChange > upperBound) {
+        const isStopLoss = pctChange < -lowerBound;
+        const alertLabel = isStopLoss ? '🔴 Cảnh báo Cắt Lỗ' : '🟢 Cảnh báo Chốt Lời';
 
-  //     // Use delta from last-known price when available; otherwise use API value
-  //     let effectivePct = pctChange;
-  //     if (last !== undefined && last !== 0) {
-  //       effectivePct = ((currentPrice - last) / last) * 100;
-  //     }
+        const embed: DiscordEmbed = {
+          title: `${alertLabel}: ${sym}`,
+          color: isStopLoss ? 0xe74c3c : 0x2ecc71,
+          fields: [
+            {
+              name: 'Giá hiện tại',
+              value: currentPrice.toLocaleString('vi-VN'),
+              inline: true,
+            },
+            {
+              name: 'Giá mua',
+              value: referencePrice.toLocaleString('vi-VN'),
+              inline: true,
+            },
+            {
+              name: 'Thay đổi',
+              value: `${pctChange >= 0 ? '+' : ''}${pctChange.toFixed(2)}%`,
+              inline: true,
+            },
+            {
+              name: 'Ngưỡng',
+              value: isStopLoss ? `-${lowerBound}%` : `+${upperBound}%`,
+              inline: true,
+            },
+            ...(watchedEntry.note
+              ? [{ name: 'Ghi chú', value: watchedEntry.note, inline: false }]
+              : []),
+          ],
+          footer: { text: 'Stock Alert Service' },
+          timestamp: new Date().toISOString(),
+        };
 
-  //     // ── 1. Alert threshold ──────────────────────────────────────────────
-  //     const alertThreshold =
-  //       watchedEntry.alertThresholdPercent ?? globalThresholds.alertThresholdPercent;
+        const discordSettings = await this.settingsService.getDiscordSettings();
+        const channelId = discordSettings.alertChannelId;
 
-  //     if (Math.abs(effectivePct) >= alertThreshold) {
-  //       const direction = effectivePct >= 0 ? '📈 TĂNG' : '📉 GIẢM';
-  //       const color = effectivePct >= 0 ? 0x00c853 : 0xd50000;
-  //       const sign = effectivePct >= 0 ? '+' : '';
+        if (channelId) {
+          await this.discordService.sendAlertWithSnooze(channelId, embed, sym);
+        } else {
+          this.logger.warn(
+            `discord.alertChannelId chưa được cấu hình — bỏ qua cảnh báo cho ${sym}.`,
+          );
+        }
 
-  //       if (channelId) {
-  //         await this.discordService.sendAlertWithSnooze(
-  //           channelId,
-  //           {
-  //             title: `${direction} — ${sym}`,
-  //             color,
-  //             fields: [
-  //               { name: 'Giá hiện tại', value: `${currentPrice.toLocaleString('vi-VN')} VND`, inline: true },
-  //               { name: '% Thay đổi', value: `${sign}${effectivePct.toFixed(2)}%`, inline: true },
-  //               { name: 'Ngưỡng cảnh báo', value: `±${alertThreshold}%`, inline: true },
-  //               ...(last !== undefined
-  //                 ? [{ name: 'Giá trước', value: `${last.toLocaleString('vi-VN')} VND`, inline: true }]
-  //                 : []),
-  //             ],
-  //             footer: { text: 'Stock Alert' },
-  //             timestamp: new Date().toISOString(),
-  //           },
-  //           sym,
-  //         );
-  //       }
+        // Áp dụng auto-snooze tối thiểu để tránh spam mỗi phút
+        const snoozeUntil = new Date(Date.now() + AUTO_SNOOZE_MS);
+        await this.watchedSymbolService.autoSnooze(sym, snoozeUntil);
 
-  //       this.logger.warn(`Alert: ${sym} ${sign}${effectivePct.toFixed(2)}% | price=${currentPrice}`);
-  //       await this.watchedSymbolService.autoSnooze(sym, new Date(Date.now() + AUTO_SNOOZE_MS));
-  //     }
-
-  //     // ── 2. Stop-loss / Take-profit (only when buyPrice is configured) ───
-  //     const buyPrice = watchedEntry.buyPrice;
-  //     if (buyPrice && buyPrice > 0) {
-  //       const pctFromBuy = ((currentPrice - buyPrice) / buyPrice) * 100;
-
-  //       const stopLossThreshold =
-  //         watchedEntry.stopLossPercent ?? globalThresholds.stopLossPercent;
-  //       const takeProfitThreshold =
-  //         watchedEntry.takeProfitPercent ?? globalThresholds.takeProfitPercent;
-
-  //       if (pctFromBuy <= -stopLossThreshold) {
-  //         if (channelId) {
-  //           await this.discordService.sendAlertWithSnooze(
-  //             channelId,
-  //             {
-  //               title: `⛔ STOP LOSS — ${sym}`,
-  //               color: 0xb71c1c,
-  //               fields: [
-  //                 { name: 'Giá hiện tại', value: `${currentPrice.toLocaleString('vi-VN')} VND`, inline: true },
-  //                 { name: 'Giá mua', value: `${buyPrice.toLocaleString('vi-VN')} VND`, inline: true },
-  //                 { name: '% Từ giá mua', value: `${pctFromBuy.toFixed(2)}%`, inline: true },
-  //                 { name: 'Ngưỡng stop-loss', value: `-${stopLossThreshold}%`, inline: true },
-  //               ],
-  //               footer: { text: 'Stock Alert — Stop Loss' },
-  //               timestamp: new Date().toISOString(),
-  //             },
-  //             sym,
-  //           );
-  //         }
-  //         this.logger.warn(`StopLoss: ${sym} pctFromBuy=${pctFromBuy.toFixed(2)}%`);
-  //         await this.watchedSymbolService.autoSnooze(sym, new Date(Date.now() + AUTO_SNOOZE_MS));
-  //       } else if (pctFromBuy >= takeProfitThreshold) {
-  //         if (channelId) {
-  //           await this.discordService.sendAlertWithSnooze(
-  //             channelId,
-  //             {
-  //               title: `💰 TAKE PROFIT — ${sym}`,
-  //               color: 0x1b5e20,
-  //               fields: [
-  //                 { name: 'Giá hiện tại', value: `${currentPrice.toLocaleString('vi-VN')} VND`, inline: true },
-  //                 { name: 'Giá mua', value: `${buyPrice.toLocaleString('vi-VN')} VND`, inline: true },
-  //                 { name: '% Từ giá mua', value: `+${pctFromBuy.toFixed(2)}%`, inline: true },
-  //                 { name: 'Ngưỡng take-profit', value: `+${takeProfitThreshold}%`, inline: true },
-  //               ],
-  //               footer: { text: 'Stock Alert — Take Profit' },
-  //               timestamp: new Date().toISOString(),
-  //             },
-  //             sym,
-  //           );
-  //         }
-  //         this.logger.warn(`TakeProfit: ${sym} pctFromBuy=+${pctFromBuy.toFixed(2)}%`);
-  //         await this.watchedSymbolService.autoSnooze(sym, new Date(Date.now() + AUTO_SNOOZE_MS));
-  //       }
-  //     }
-
-  //     this.lastPrices.set(sym, currentPrice);
-  //   }
-  // }
-
-  /** Manual trigger for price-alert check (useful for testing) */
-  // async triggerPriceCheck() {
-  //   await this.checkPriceAlerts();
-  //   return { triggered: true };
-  // }
-
-  // ─── Internal helpers ─────────────────────────────────────────────────────
-
-  // private async getPriceBoard(symbols: string[], source?: string): Promise<{ data: PriceBoardItem[] }> {
-  //   const baseUrl = await this.settingsService.getValue('stock.apiBaseUrl');
-  //   const defaultSource = await this.settingsService.getValue('stock.apiSource');
-  //   const url = `${baseUrl}/price-board`;
-  //   const response = await firstValueFrom(
-  //     this.httpService.get<{ data: PriceBoardItem[] }>(url, {
-  //       params: { symbols: symbols.join(','), source: source ?? defaultSource },
-  //     }),
-  //   );
-  //   return response.data;
-  // }
-
-  // async getPriceBoardPublic(symbols: string[], source?: string) {
-  //   return this.getPriceBoard(symbols, source);
-  // }
-
-  // async getIntraday(symbol: string, pageSize = 100, source?: string) {
-  //   const baseUrl = await this.settingsService.getValue('stock.apiBaseUrl');
-  //   const defaultSource = await this.settingsService.getValue('stock.apiSource');
-  //   const url = `${baseUrl}/quote/intraday/${symbol.toUpperCase()}`;
-  //   const response = await firstValueFrom(
-  //     this.httpService.get(url, {
-  //       params: { page_size: pageSize, source: source ?? defaultSource },
-  //     }),
-  //   );
-  //   return response.data;
-  // }
-
-  // async getHistory(
-  //   symbol: string,
-  //   opts: { start?: string; end?: string; length?: number; interval?: string; source?: string },
-  // ) {
-  //   const baseUrl = await this.settingsService.getValue('stock.apiBaseUrl');
-  //   const defaultSource = await this.settingsService.getValue('stock.apiSource');
-  //   const url = `${baseUrl}/quote/history/${symbol.toUpperCase()}`;
-  //   const response = await firstValueFrom(
-  //     this.httpService.get(url, {
-  //       params: {
-  //         start: opts.start,
-  //         end: opts.end,
-  //         length: opts.length,
-  //         interval: opts.interval ?? 'd',
-  //         source: opts.source ?? defaultSource,
-  //       },
-  //     }),
-  //   );
-  //   return response.data;
-  // }
-
-  // async getListing(source?: string) {
-  //   const baseUrl = await this.settingsService.getValue('stock.apiBaseUrl');
-  //   const defaultSource = await this.settingsService.getValue('stock.apiSource');
-  //   const response = await firstValueFrom(
-  //     this.httpService.get(`${baseUrl}/listing`, {
-  //       params: { source: source ?? defaultSource },
-  //     }),
-  //   );
-  //   return response.data;
-  // }
-
-  // async getCompany(symbol: string, source?: string) {
-  //   const baseUrl = await this.settingsService.getValue('stock.apiBaseUrl');
-  //   const defaultSource = await this.settingsService.getValue('stock.apiSource');
-  //   const response = await firstValueFrom(
-  //     this.httpService.get(`${baseUrl}/company/${symbol.toUpperCase()}`, {
-  //       params: { source: source ?? defaultSource },
-  //     }),
-  //   );
-  //   return response.data;
-  // }
+        this.logger.log(
+          `Alert fired for ${sym}: ${pctChange.toFixed(2)}% (${isStopLoss ? 'stop-loss' : 'take-profit'}). Auto-snoozed until ${snoozeUntil.toISOString()}.`,
+        );
+      }
+    }
+  }
 }

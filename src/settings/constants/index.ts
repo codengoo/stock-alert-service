@@ -5,5 +5,8 @@ export const DEFAULT_SETTING: ISettings = {
         alertThresholdPercent: 5,
         stopLossPercent: 3,
         takeProfitPercent: 10,
-    }
+    },
+    discord: {
+        alertChannelId: '1496041524411236432',
+    },
 };

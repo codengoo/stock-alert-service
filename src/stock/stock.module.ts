@@ -1,3 +1,4 @@
+import { StockApiModule } from '@/shared/stock';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { SettingsModule } from '../settings/settings.module';
@@ -10,6 +11,7 @@ import { StockService } from './stock.service';
     HttpModule,
     SettingsModule,
     WatchedSymbolModule,
+    StockApiModule
   ],
   controllers: [StockController],
   providers: [StockService],

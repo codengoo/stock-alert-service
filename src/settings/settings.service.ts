@@ -15,11 +15,13 @@ export class SettingsService extends SettingModelService<ISettings> {
   }
 
   async getAll(): Promise<ISettings> {
-    const [thresholdSettings] = await Promise.all([
+    const [thresholdSettings, discordSettings] = await Promise.all([
       this.getThresholdSettings(),
+      this.getDiscordSettings(),
     ]);
     return {
       threshold: thresholdSettings,
+      discord: discordSettings,
     };
   }
 
@@ -27,8 +29,16 @@ export class SettingsService extends SettingModelService<ISettings> {
     return this.get('threshold');
   }
 
+  async getDiscordSettings() {
+    return this.get('discord');
+  }
+
   async updateThresholdSettings(value: Partial<ISettings['threshold']>) {
     return this.set('threshold', value);
+  }
+
+  async updateDiscordSettings(value: Partial<ISettings['discord']>) {
+    return this.set('discord', value);
   }
 
   async resetAll() {
