@@ -12,7 +12,7 @@ import {
 export class StockApiService {
   private readonly logger = new Logger(StockApiService.name);
   private readonly client = axios.create({
-    baseURL: 'http://localhost:8000',
+    baseURL: process.env.STOCK_API_URL || 'http://localhost:8000',
     timeout: 30000,
   });
 
