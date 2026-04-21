@@ -21,7 +21,6 @@ export class StockService {
   ) {}
 
   // ─── Scheduled price-alert job ────────────────────────────────────────────
-
   /** Runs every minute during trading hours (Mon–Fri, 09:00–15:30 ICT = 02:00–08:30 UTC) */
   @Cron('*/1 9-11,13-15 * * 1-5')
   async checkPriceAlerts() {

@@ -8,7 +8,7 @@ import {
   StringSelectMenuOptionBuilder,
   TextChannel,
 } from 'discord.js';
-import { SnoozeDuration, SNOOZE_DURATION_MS } from '../../watched-symbol/dto/snooze-symbol.dto';
+import { SNOOZE_DURATION_MS, SnoozeDuration } from '../../watched-symbol/dto/snooze-symbol.dto';
 
 export interface DiscordEmbed {
   title: string;
