@@ -2,8 +2,15 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { PriceBoardItem, StockApiService } from '@/shared/stock';
 import { Cron } from '@nestjs/schedule';
+import {
+  ActionRowBuilder,
+  MessageCreateOptions,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
+} from 'discord.js';
+import { DiscordService } from '../discord/discord.service';
 import { SettingsService } from '../settings/settings.service';
-import { DiscordEmbed, DiscordService } from '../shared/discord/discord.service';
+import { SNOOZE_OPTIONS } from '../watched-symbol/dto/snooze-symbol.dto';
 import { WatchedSymbolService } from '../watched-symbol/watched-symbol.service';
 
 /** Minimum auto-snooze applied after any alert fires (prevents per-minute spam) */
@@ -61,46 +68,27 @@ export class StockService {
       }
 
       if (pctChange < -lowerBound || pctChange > upperBound) {
-        const isStopLoss = pctChange < -lowerBound;
-        const alertLabel = isStopLoss ? '🔴 Cảnh báo Cắt Lỗ' : '🟢 Cảnh báo Chốt Lời';
-
-        const embed: DiscordEmbed = {
-          title: `${alertLabel}: ${sym}`,
-          color: isStopLoss ? 0xe74c3c : 0x2ecc71,
-          fields: [
-            {
-              name: 'Giá hiện tại',
-              value: currentPrice.toLocaleString('vi-VN'),
-              inline: true,
-            },
-            {
-              name: 'Giá mua',
-              value: referencePrice.toLocaleString('vi-VN'),
-              inline: true,
-            },
-            {
-              name: 'Thay đổi',
-              value: `${pctChange >= 0 ? '+' : ''}${pctChange.toFixed(2)}%`,
-              inline: true,
-            },
-            {
-              name: 'Ngưỡng',
-              value: isStopLoss ? `-${lowerBound}%` : `+${upperBound}%`,
-              inline: true,
-            },
-            ...(watchedEntry.note
-              ? [{ name: 'Ghi chú', value: watchedEntry.note, inline: false }]
-              : []),
-          ],
-          footer: { text: 'Stock Alert Service' },
-          timestamp: new Date().toISOString(),
-        };
-
         const discordSettings = await this.settingsService.getDiscordSettings();
         const channelId = discordSettings.alertChannelId;
+        const isStopLoss = pctChange < -lowerBound;
 
         if (channelId) {
-          await this.discordService.sendAlertWithSnooze(channelId, embed, sym);
+          const embed = await this.buildAlertEmbed(
+            sym,
+            currentPrice,
+            referencePrice,
+            pctChange,
+            isStopLoss,
+            lowerBound,
+            upperBound,
+          );
+
+          const components = await this.buildSnoozeMenu(sym);
+          const payload: MessageCreateOptions = {
+            embeds: [embed],
+            components: [components],
+          };
+          await this.discordService.sendMessage(channelId, payload);
         } else {
           this.logger.warn(
             `discord.alertChannelId chưa được cấu hình — bỏ qua cảnh báo cho ${sym}.`,
@@ -116,5 +104,64 @@ export class StockService {
         );
       }
     }
+  }
+
+  private async buildAlertEmbed(
+    symbol: string,
+    currentPrice: number,
+    referencePrice: number,
+    pctChange: number,
+    isStopLoss: boolean,
+    lowerBound: number,
+    upperBound: number,
+  ) {
+    const alertLabel = isStopLoss
+      ? '🔴 Cảnh báo Cắt Lỗ'
+      : '🟢 Cảnh báo Chốt Lời';
+
+    return {
+      title: `${alertLabel}: ${symbol}`,
+      color: isStopLoss ? 0xe74c3c : 0x2ecc71,
+      fields: [
+        {
+          name: 'Giá hiện tại',
+          value: currentPrice.toLocaleString('vi-VN'),
+          inline: true,
+        },
+        {
+          name: 'Giá mua',
+          value: referencePrice.toLocaleString('vi-VN'),
+          inline: true,
+        },
+        {
+          name: 'Thay đổi',
+          value: `${pctChange >= 0 ? '+' : ''}${pctChange.toFixed(2)}%`,
+          inline: true,
+        },
+        {
+          name: 'Ngưỡng',
+          value: isStopLoss ? `-${lowerBound}%` : `+${upperBound}%`,
+          inline: true,
+        },
+      ],
+      footer: { text: 'Stock Alert Service' },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  private async buildSnoozeMenu(symbol: string) {
+    return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`snooze:${symbol}`)
+        .setPlaceholder('⏸  Snooze cảnh báo...')
+        .addOptions(
+          SNOOZE_OPTIONS.map((o) =>
+            new StringSelectMenuOptionBuilder()
+              .setLabel(o.label)
+              .setValue(o.value)
+              .setDescription(o.description),
+          ),
+        ),
+    );
   }
 }

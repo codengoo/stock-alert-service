@@ -2,9 +2,9 @@ import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { WatchedSymbol, WatchedSymbolDocument } from '../schemas/watched-symbol.schema';
-import { DiscordService } from '../shared/discord/discord.service';
+import { DiscordInteractionService } from '../discord/discord-interaction.service';
 import { CreateWatchedSymbolDto } from './dto/create-watched-symbol.dto';
-import { SNOOZE_DURATION_MS, SnoozeDuration } from './dto/snooze-symbol.dto';
+import { SNOOZE_DURATION_MS, SNOOZE_LABEL, SnoozeDuration } from './dto/snooze-symbol.dto';
 import { UpdateWatchedSymbolDto } from './dto/update-watched-symbol.dto';
 
 @Injectable()
@@ -12,16 +12,31 @@ export class WatchedSymbolService implements OnModuleInit {
   constructor(
     @InjectModel(WatchedSymbol.name)
     private readonly watchedSymbolModel: Model<WatchedSymbolDocument>,
-    private readonly discordService: DiscordService,
+    private readonly discordInteractionService: DiscordInteractionService,
   ) {}
 
   onModuleInit() {
-    // Register handler so Discord interactions can trigger snooze updates
-    this.discordService.registerSnoozeHandler(async (symbol: string, snoozeUntil: Date) => {
+    // Register the snooze select-menu interaction handler.
+    // customId format: `snooze:<SYMBOL>`
+    this.discordInteractionService.register('snooze', async (interaction) => {
+      const symbol = interaction.customId.split(':')[1];
+      if (!symbol) return;
+
+      const durationValue = interaction.values[0] as SnoozeDuration;
+      const ms = SNOOZE_DURATION_MS[durationValue];
+      if (!ms) return;
+
+      const snoozeUntil = new Date(Date.now() + ms);
       await this.watchedSymbolModel.updateOne(
         { symbol: symbol.toUpperCase() },
         { $set: { snoozeUntil } },
       );
+
+      const label = SNOOZE_LABEL[durationValue] ?? durationValue;
+      await interaction.reply({
+        content: `⏸ Đã snooze cảnh báo **${symbol}** trong **${label}** (đến ${snoozeUntil.toLocaleString('vi-VN')}).`,
+        ephemeral: true,
+      });
     });
   }
 

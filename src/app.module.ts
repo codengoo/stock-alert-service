@@ -8,7 +8,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ApiKeyGuard } from './common/guards/api-key.guard';
 import { SettingsModule } from './settings/settings.module';
-import { DiscordModule } from './shared/discord/discord.module';
+import { DiscordModule } from './discord/discord.module';
 import { StockModule } from './stock/stock.module';
 import { WatchedSymbolModule } from './watched-symbol/watched-symbol.module';
 
