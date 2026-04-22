@@ -53,6 +53,7 @@ export class WatchedSymbolService implements OnModuleInit {
             stopLossPercent: dto.stopLossPercent ?? null,
             takeProfitPercent: dto.takeProfitPercent ?? null,
             buyPrice: dto.buyPrice ?? null,
+            expectBuyPrice: dto.expectBuyPrice ?? null,
           },
         },
         { new: true, upsert: true },
@@ -82,6 +83,7 @@ export class WatchedSymbolService implements OnModuleInit {
     if ('stopLossPercent' in dto) updateFields.stopLossPercent = dto.stopLossPercent ?? null;
     if ('takeProfitPercent' in dto) updateFields.takeProfitPercent = dto.takeProfitPercent ?? null;
     if ('buyPrice' in dto) updateFields.buyPrice = dto.buyPrice ?? null;
+    if ('expectBuyPrice' in dto) updateFields.expectBuyPrice = dto.expectBuyPrice ?? null;
 
     const doc = await this.watchedSymbolModel
       .findOneAndUpdate(

@@ -28,6 +28,10 @@ export class WatchedSymbol {
   @Prop({ type: Number, default: null })
   buyPrice?: number | null;
 
+  /** Expected buy price — triggers a buy-signal alert when market price ≤ this value */
+  @Prop({ type: Number, default: null })
+  expectBuyPrice?: number | null;
+
   /** Suppress alerts until this timestamp (set by user snooze or auto-snooze after alert) */
   @Prop({ type: Date, default: null })
   snoozeUntil?: Date | null;

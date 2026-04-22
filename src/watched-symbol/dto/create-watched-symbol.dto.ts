@@ -59,4 +59,13 @@ export class CreateWatchedSymbolDto {
   @IsPositive()
   @IsOptional()
   buyPrice?: number | null;
+
+  @ApiPropertyOptional({
+    description: 'Giá kỳ vọng mua vào — khi giá thị trường ≤ giá này sẽ gửi tín hiệu mua (null = không theo dõi)',
+    example: 80000,
+  })
+  @IsNumber()
+  @IsPositive()
+  @IsOptional()
+  expectBuyPrice?: number | null;
 }

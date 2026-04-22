@@ -103,6 +103,37 @@ export class StockService {
           `Alert fired for ${sym}: ${pctChange.toFixed(2)}% (${isStopLoss ? 'stop-loss' : 'take-profit'}). Auto-snoozed until ${snoozeUntil.toISOString()}.`,
         );
       }
+
+      // ── Buy-signal check ─────────────────────────────────────────────────
+      const expectBuyPrice = watchedEntry.expectBuyPrice;
+      if (
+        expectBuyPrice != null &&
+        !isNaN(expectBuyPrice) &&
+        currentPrice <= expectBuyPrice
+      ) {
+        const discordSettings = await this.settingsService.getDiscordSettings();
+        const channelId = discordSettings.alertChannelId;
+
+        if (channelId) {
+          const embed = this.buildBuySignalEmbed(sym, currentPrice, expectBuyPrice);
+          const components = await this.buildSnoozeMenu(sym);
+          await this.discordService.sendMessage(channelId, {
+            embeds: [embed],
+            components: [components],
+          });
+        } else {
+          this.logger.warn(
+            `discord.alertChannelId chưa được cấu hình — bỏ qua tín hiệu mua cho ${sym}.`,
+          );
+        }
+
+        const snoozeUntil = new Date(Date.now() + AUTO_SNOOZE_MS);
+        await this.watchedSymbolService.autoSnooze(sym, snoozeUntil);
+
+        this.logger.log(
+          `Buy signal fired for ${sym}: currentPrice=${currentPrice} <= expectBuyPrice=${expectBuyPrice}. Auto-snoozed until ${snoozeUntil.toISOString()}.`,
+        );
+      }
     }
   }
 
@@ -141,6 +172,31 @@ export class StockService {
         {
           name: 'Ngưỡng',
           value: isStopLoss ? `-${lowerBound}%` : `+${upperBound}%`,
+          inline: true,
+        },
+      ],
+      footer: { text: 'Stock Alert Service' },
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  private buildBuySignalEmbed(
+    symbol: string,
+    currentPrice: number,
+    expectBuyPrice: number,
+  ) {
+    return {
+      title: `🔵 Tín hiệu Mua: ${symbol}`,
+      color: 0x3498db,
+      fields: [
+        {
+          name: 'Giá hiện tại',
+          value: currentPrice.toLocaleString('vi-VN'),
+          inline: true,
+        },
+        {
+          name: 'Giá kỳ vọng mua',
+          value: expectBuyPrice.toLocaleString('vi-VN'),
           inline: true,
         },
       ],

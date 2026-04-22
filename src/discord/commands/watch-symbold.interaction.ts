@@ -43,7 +43,7 @@ export class SymbolSlashCommandService implements OnModuleInit {
                 type: ApplicationCommandOptionType.Number,
                 name: 'buy_price',
                 description: 'Giá mua tham chiếu',
-                required: true,
+                required: false,
                 min_value: 0,
               },
               {
@@ -59,6 +59,14 @@ export class SymbolSlashCommandService implements OnModuleInit {
                 name: 'take_profit',
                 description:
                   'Ngưỡng chốt lời % (bỏ qua = dùng mặc định hệ thống)',
+                required: false,
+                min_value: 0,
+              },
+              {
+                type: ApplicationCommandOptionType.Number,
+                name: 'expect_buy_price',
+                description:
+                  'Giá kỳ vọng mua vào (×1000) — nhận tín hiệu mua khi giá ≤ mức này (bỏ qua = không theo dõi)',
                 required: false,
                 min_value: 0,
               },
@@ -113,6 +121,8 @@ export class SymbolSlashCommandService implements OnModuleInit {
     const stopLoss = interaction.options.getNumber('stop_loss') ?? undefined;
     const takeProfit =
       interaction.options.getNumber('take_profit') ?? undefined;
+    const expectBuyPriceRaw = interaction.options.getNumber('expect_buy_price');
+    const expectBuyPrice = expectBuyPriceRaw != null ? expectBuyPriceRaw * 1000 : null;
 
     try {
       // Kiểm tra symbol có tồn tại trên sàn không
@@ -129,6 +139,7 @@ export class SymbolSlashCommandService implements OnModuleInit {
         buyPrice,
         stopLossPercent: stopLoss ?? null,
         takeProfitPercent: takeProfit ?? null,
+        expectBuyPrice: expectBuyPrice,
       });
 
       const lines: string[] = [
@@ -137,6 +148,8 @@ export class SymbolSlashCommandService implements OnModuleInit {
       ];
       if (stopLoss != null) lines.push(`🔴 Cắt lỗ: **${stopLoss}%**`);
       if (takeProfit != null) lines.push(`🟢 Chốt lời: **${takeProfit}%**`);
+      if (expectBuyPriceRaw != null)
+        lines.push(`🔵 Giá kỳ vọng mua: **${expectBuyPrice!.toLocaleString('vi-VN')}** (${expectBuyPriceRaw.toLocaleString('vi-VN')} × 1000)`);
 
       await interaction.editReply(lines.join('\n'));
     } catch (err) {
