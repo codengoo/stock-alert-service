@@ -116,13 +116,14 @@ export class SymbolSlashCommandService implements OnModuleInit {
     await interaction.deferReply({ ephemeral: true });
 
     const symbol = interaction.options.getString('symbol', true).toUpperCase();
-    const buyPriceRaw = interaction.options.getNumber('buy_price', true);
-    const buyPrice = buyPriceRaw * 1000;
+    const buyPriceRaw = interaction.options.getNumber('buy_price');
+    const buyPrice = buyPriceRaw != null ? buyPriceRaw * 1000 : null;
     const stopLoss = interaction.options.getNumber('stop_loss') ?? undefined;
     const takeProfit =
       interaction.options.getNumber('take_profit') ?? undefined;
     const expectBuyPriceRaw = interaction.options.getNumber('expect_buy_price');
-    const expectBuyPrice = expectBuyPriceRaw != null ? expectBuyPriceRaw * 1000 : null;
+    const expectBuyPrice =
+      expectBuyPriceRaw != null ? expectBuyPriceRaw * 1000 : null;
 
     try {
       // Kiểm tra symbol có tồn tại trên sàn không
@@ -144,12 +145,17 @@ export class SymbolSlashCommandService implements OnModuleInit {
 
       const lines: string[] = [
         `✅ Đã thêm/cập nhật **${symbol}** (${existMap[symbol].organ_name}) vào danh sách theo dõi.`,
-        `💰 Giá mua: **${buyPrice.toLocaleString('vi-VN')}** (${buyPriceRaw.toLocaleString('vi-VN')} × 1000)`,
       ];
+      if (buyPrice != null)
+        lines.push(
+          `💰 Giá mua: **${buyPrice.toLocaleString('vi-VN')}** (${buyPriceRaw!.toLocaleString('vi-VN')} × 1000)`,
+        );
       if (stopLoss != null) lines.push(`🔴 Cắt lỗ: **${stopLoss}%**`);
       if (takeProfit != null) lines.push(`🟢 Chốt lời: **${takeProfit}%**`);
       if (expectBuyPriceRaw != null)
-        lines.push(`🔵 Giá kỳ vọng mua: **${expectBuyPrice!.toLocaleString('vi-VN')}** (${expectBuyPriceRaw.toLocaleString('vi-VN')} × 1000)`);
+        lines.push(
+          `🔵 Giá kỳ vọng mua: **${expectBuyPrice!.toLocaleString('vi-VN')}** (${expectBuyPriceRaw.toLocaleString('vi-VN')} × 1000)`,
+        );
 
       await interaction.editReply(lines.join('\n'));
     } catch (err) {
