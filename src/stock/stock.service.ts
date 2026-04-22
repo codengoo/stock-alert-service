@@ -9,6 +9,8 @@ import {
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
 import { DiscordService } from '../discord/discord.service';
+import { WatchedSymbolDocument } from '../schemas/watched-symbol.schema';
+import { IThresholdSettings } from '../settings/interfaces';
 import { SettingsService } from '../settings/settings.service';
 import { SNOOZE_OPTIONS } from '../watched-symbol/dto/snooze-symbol.dto';
 import { WatchedSymbolService } from '../watched-symbol/watched-symbol.service';
@@ -52,92 +54,99 @@ export class StockService {
       const currentPrice = Number(item.close_price);
       if (isNaN(currentPrice)) continue;
 
-      if (watchedEntry.snoozeUntil && watchedEntry.snoozeUntil > new Date()) {
+      if (this.isSnoozed(watchedEntry)) {
         this.logger.debug(
-          `Skipping ${sym} due to active snooze until ${watchedEntry.snoozeUntil.toISOString()}`,
+          `Skipping ${sym} due to active snooze until ${watchedEntry.snoozeUntil!.toISOString()}`,
         );
         continue;
       }
 
-      // ── Stop-loss / take-profit — chỉ chạy khi có buyPrice ───────────────
-      if (watchedEntry.buyPrice != null) {
-        const referencePrice = Number(watchedEntry.buyPrice);
-        const pctChange =
-          ((currentPrice - referencePrice) / referencePrice) * 100;
-
-        const lowerBound =
-          watchedEntry.stopLossPercent ?? globalThresholds.stopLossPercent;
-        const upperBound =
-          watchedEntry.takeProfitPercent ?? globalThresholds.takeProfitPercent;
-
-        if (pctChange < -lowerBound || pctChange > upperBound) {
-          const discordSettings = await this.settingsService.getDiscordSettings();
-          const channelId = discordSettings.alertChannelId;
-          const isStopLoss = pctChange < -lowerBound;
-
-          if (channelId) {
-            const embed = await this.buildAlertEmbed(
-              sym,
-              currentPrice,
-              referencePrice,
-              pctChange,
-              isStopLoss,
-              lowerBound,
-              upperBound,
-            );
-
-            const components = await this.buildSnoozeMenu(sym);
-            const payload: MessageCreateOptions = {
-              embeds: [embed],
-              components: [components],
-            };
-            await this.discordService.sendMessage(channelId, payload);
-          } else {
-            this.logger.warn(
-              `discord.alertChannelId chưa được cấu hình — bỏ qua cảnh báo cho ${sym}.`,
-            );
-          }
-
-          const snoozeUntil = new Date(Date.now() + AUTO_SNOOZE_MS);
-          await this.watchedSymbolService.autoSnooze(sym, snoozeUntil);
-
-          this.logger.log(
-            `Alert fired for ${sym}: ${pctChange.toFixed(2)}% (${isStopLoss ? 'stop-loss' : 'take-profit'}). Auto-snoozed until ${snoozeUntil.toISOString()}.`,
-          );
-        }
-      }
-
-      // ── Buy-signal check ─────────────────────────────────────────────────
-      const expectBuyPrice = watchedEntry.expectBuyPrice;
-      if (
-        expectBuyPrice != null &&
-        !isNaN(expectBuyPrice) &&
-        currentPrice <= expectBuyPrice
-      ) {
-        const discordSettings = await this.settingsService.getDiscordSettings();
-        const channelId = discordSettings.alertChannelId;
-
-        if (channelId) {
-          const embed = this.buildBuySignalEmbed(sym, currentPrice, expectBuyPrice);
-          const components = await this.buildSnoozeMenu(sym);
-          await this.discordService.sendMessage(channelId, {
-            embeds: [embed],
-            components: [components],
-          });
-        } else {
-          this.logger.warn(
-            `discord.alertChannelId chưa được cấu hình — bỏ qua tín hiệu mua cho ${sym}.`,
-          );
-        }
-
-        const snoozeUntil = new Date(Date.now() + AUTO_SNOOZE_MS);
-        await this.watchedSymbolService.autoSnooze(sym, snoozeUntil);
-
-        this.logger.log(
-          `Buy signal fired for ${sym}: currentPrice=${currentPrice} <= expectBuyPrice=${expectBuyPrice}. Auto-snoozed until ${snoozeUntil.toISOString()}.`,
-        );
-      }
+      await this.checkStopLossTakeProfit(sym, watchedEntry, currentPrice, globalThresholds);
+      await this.checkBuySignal(sym, watchedEntry, currentPrice);
     }
+  }
+
+  // ─── Per-symbol check helpers ─────────────────────────────────────────────
+
+  private isSnoozed(watchedEntry: WatchedSymbolDocument): boolean {
+    return watchedEntry.snoozeUntil != null && watchedEntry.snoozeUntil > new Date();
+  }
+
+  private async checkStopLossTakeProfit(
+    sym: string,
+    watchedEntry: WatchedSymbolDocument,
+    currentPrice: number,
+    globalThresholds: IThresholdSettings,
+  ) {
+    if (watchedEntry.buyPrice == null) return;
+
+    const referencePrice = Number(watchedEntry.buyPrice);
+    const pctChange = ((currentPrice - referencePrice) / referencePrice) * 100;
+
+    const lowerBound = watchedEntry.stopLossPercent ?? globalThresholds.stopLossPercent;
+    const upperBound = watchedEntry.takeProfitPercent ?? globalThresholds.takeProfitPercent;
+
+    // 0 means the check is disabled for that side
+    const isStopLoss = lowerBound > 0 && pctChange < -lowerBound;
+    const isTakeProfit = upperBound > 0 && pctChange > upperBound;
+
+    if (!isStopLoss && !isTakeProfit) return;
+
+    const discordSettings = await this.settingsService.getDiscordSettings();
+    const channelId = discordSettings.alertChannelId;
+
+    if (channelId) {
+      const embed = await this.buildAlertEmbed(
+        sym,
+        currentPrice,
+        referencePrice,
+        pctChange,
+        isStopLoss,
+        lowerBound,
+        upperBound,
+      );
+      const components = await this.buildSnoozeMenu(sym);
+      const payload: MessageCreateOptions = { embeds: [embed], components: [components] };
+      await this.discordService.sendMessage(channelId, payload);
+    } else {
+      this.logger.warn(
+        `discord.alertChannelId chưa được cấu hình — bỏ qua cảnh báo cho ${sym}.`,
+      );
+    }
+
+    const snoozeUntil = new Date(Date.now() + AUTO_SNOOZE_MS);
+    await this.watchedSymbolService.autoSnooze(sym, snoozeUntil);
+    this.logger.log(
+      `Alert fired for ${sym}: ${pctChange.toFixed(2)}% (${isStopLoss ? 'stop-loss' : 'take-profit'}). Auto-snoozed until ${snoozeUntil.toISOString()}.`,
+    );
+  }
+
+  private async checkBuySignal(
+    sym: string,
+    watchedEntry: WatchedSymbolDocument,
+    currentPrice: number,
+  ) {
+    const expectBuyPrice = watchedEntry.expectBuyPrice;
+    if (expectBuyPrice == null || isNaN(expectBuyPrice) || currentPrice > expectBuyPrice) return;
+
+    const discordSettings = await this.settingsService.getDiscordSettings();
+    const channelId = discordSettings.alertChannelId;
+
+    if (channelId) {
+      const embed = this.buildBuySignalEmbed(sym, currentPrice, expectBuyPrice);
+      const components = await this.buildSnoozeMenu(sym);
+      await this.discordService.sendMessage(channelId, { embeds: [embed], components: [components] });
+    } else {
+      this.logger.warn(
+        `discord.alertChannelId chưa được cấu hình — bỏ qua tín hiệu mua cho ${sym}.`,
+      );
+    }
+
+    const snoozeUntil = new Date(Date.now() + AUTO_SNOOZE_MS);
+    await this.watchedSymbolService.autoSnooze(sym, snoozeUntil);
+    this.logger.log(
+      `Buy signal fired for ${sym}: currentPrice=${currentPrice} <= expectBuyPrice=${expectBuyPrice}. Auto-snoozed until ${snoozeUntil.toISOString()}.`,
+    );
   }
 
   private async buildAlertEmbed(
