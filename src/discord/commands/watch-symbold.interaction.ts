@@ -150,8 +150,18 @@ export class SymbolSlashCommandService implements OnModuleInit {
         lines.push(
           `💰 Giá mua: **${buyPrice.toLocaleString('vi-VN')}** (${buyPriceRaw!.toLocaleString('vi-VN')} × 1000)`,
         );
-      if (stopLoss != null) lines.push(`🔴 Cắt lỗ: **${stopLoss}%**`);
-      if (takeProfit != null) lines.push(`🟢 Chốt lời: **${takeProfit}%**`);
+      if (stopLoss != null)
+        lines.push(
+          stopLoss === 0
+            ? `🔴 Cắt lỗ: **tắt** (bỏ qua cảnh báo cắt lỗ)`
+            : `🔴 Cắt lỗ: **${stopLoss}%**`,
+        );
+      if (takeProfit != null)
+        lines.push(
+          takeProfit === 0
+            ? `🟢 Chốt lời: **tắt** (bỏ qua cảnh báo chốt lời)`
+            : `🟢 Chốt lời: **${takeProfit}%**`,
+        );
       if (expectBuyPriceRaw != null)
         lines.push(
           `🔵 Giá kỳ vọng mua: **${expectBuyPrice!.toLocaleString('vi-VN')}** (${expectBuyPriceRaw.toLocaleString('vi-VN')} × 1000)`,

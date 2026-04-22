@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { WatchedSymbol, WatchedSymbolDocument } from '../schemas/watched-symbol.schema';
 import { DiscordInteractionService } from '../discord/discord-interaction.service';
+import { WatchedSymbol, WatchedSymbolDocument } from '../schemas/watched-symbol.schema';
 import { CreateWatchedSymbolDto } from './dto/create-watched-symbol.dto';
 import { SNOOZE_DURATION_MS, SNOOZE_LABEL, SnoozeDuration } from './dto/snooze-symbol.dto';
 import { UpdateWatchedSymbolDto } from './dto/update-watched-symbol.dto';

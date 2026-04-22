@@ -17,6 +17,7 @@ FROM node:22-alpine AS production
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV TZ=Asia/Ho_Chi_Minh
 
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
