@@ -1,3 +1,4 @@
+import { SettingsService } from '@/settings/settings.service';
 import { StockApiService } from '@/shared/stock/stock.service';
 import { WatchedSymbolService } from '@/watched-symbol/watched-symbol.service';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
@@ -8,6 +9,7 @@ import {
 } from 'discord.js';
 import { DiscordInteractionService } from '../discord-interaction.service';
 import { DiscordService } from '../discord.service';
+import { buildTable } from '../utils/table.util';
 
 @Injectable()
 export class SymbolSlashCommandService implements OnModuleInit {
@@ -18,6 +20,7 @@ export class SymbolSlashCommandService implements OnModuleInit {
     private readonly discordInteractionService: DiscordInteractionService,
     private readonly watchedSymbolService: WatchedSymbolService,
     private readonly stockApiService: StockApiService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   onModuleInit() {
@@ -85,6 +88,11 @@ export class SymbolSlashCommandService implements OnModuleInit {
               },
             ],
           },
+          {
+            type: ApplicationCommandOptionType.Subcommand,
+            name: 'list',
+            description: 'Liệt kê danh sách cổ phiếu đang theo dõi',
+          },
         ],
       },
     ]);
@@ -105,6 +113,8 @@ export class SymbolSlashCommandService implements OnModuleInit {
       await this.handleAdd(interaction);
     } else if (sub === 'remove') {
       await this.handleRemove(interaction);
+    } else if (sub === 'list') {
+      await this.handleList(interaction);
     }
   }
 
@@ -174,6 +184,57 @@ export class SymbolSlashCommandService implements OnModuleInit {
         `❌ Không thể thêm **${symbol}**: ${err instanceof Error ? err.message : 'Lỗi không xác định.'}`,
       );
     }
+  }
+
+  // ─── /symbol list ────────────────────────────────────────────────────────
+
+  private async handleList(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
+    await interaction.deferReply({ ephemeral: true });
+
+    const symbols = await this.watchedSymbolService.findAll();
+
+    if (symbols.length === 0) {
+      await interaction.editReply('📭 Danh sách theo dõi đang trống.');
+      return;
+    }
+
+    const sorted = [...symbols].sort((a, b) => a.symbol.localeCompare(b.symbol));
+
+    const [thresholds, priceBoard] = await Promise.all([
+      this.settingsService.getThresholdSettings(),
+      this.stockApiService.getPriceBoard(sorted.map((s) => s.symbol)),
+    ]);
+
+    const priceMap = new Map(priceBoard.map((p) => [p.symbol, p.close_price]));
+
+    const resolvePercent = (
+      symbolVal: number | null | undefined,
+      globalVal: number,
+    ): string => {
+      const val = symbolVal ?? globalVal;
+      return val === 0 ? '/' : `${val}%`;
+    };
+
+    const fmt = (val: number | null | undefined) =>
+      val != null ? (val / 1000).toLocaleString('vi-VN') : '-';
+
+    const fmtPrice = (val: number | undefined) =>
+      val != null ? (val / 1000).toLocaleString('vi-VN') : '-';
+
+    const headers = ['CP', 'Current price', 'Stop loss', 'Take profit', 'Expect price', 'Buy price'];
+    const rows = sorted.map((s) => [
+      s.symbol,
+      fmtPrice(priceMap.get(s.symbol)),
+      resolvePercent(s.stopLossPercent, thresholds.stopLossPercent),
+      resolvePercent(s.takeProfitPercent, thresholds.takeProfitPercent),
+      fmt(s.expectBuyPrice),
+      fmt(s.buyPrice),
+    ]);
+
+    const table = ['```', buildTable(headers, rows), '```'].join('\n');
+    await interaction.editReply(`📋 **Danh sách cổ phiếu theo dõi (${sorted.length})**\n${table}`);
   }
 
   // ─── /symbol remove ───────────────────────────────────────────────────────

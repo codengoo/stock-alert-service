@@ -52,7 +52,10 @@ export class StockService {
       if (!watchedEntry) continue;
 
       const currentPrice = Number(item.close_price);
-      if (isNaN(currentPrice)) continue;
+      if (isNaN(currentPrice) || currentPrice <= 0) {
+        this.logger.warn(`Invalid price data for ${sym}: ${item.close_price}`);
+        continue;
+      }
 
       if (this.isSnoozed(watchedEntry)) {
         this.logger.debug(

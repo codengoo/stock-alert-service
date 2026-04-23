@@ -3,6 +3,7 @@ import { StockApiModule } from '@/shared/stock/stock.module';
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { WatchedSymbol, WatchedSymbolSchema } from '../schemas/watched-symbol.schema';
+import { SettingsModule } from '../settings/settings.module';
 import { WatchedSymbolController } from './watched-symbol.controller';
 import { WatchedSymbolService } from './watched-symbol.service';
 
@@ -12,6 +13,7 @@ import { WatchedSymbolService } from './watched-symbol.service';
       { name: WatchedSymbol.name, schema: WatchedSymbolSchema },
     ]),
     StockApiModule,
+    SettingsModule,
   ],
   controllers: [WatchedSymbolController],
   providers: [WatchedSymbolService, SymbolSlashCommandService],
