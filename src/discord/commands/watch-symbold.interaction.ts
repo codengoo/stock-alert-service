@@ -145,16 +145,30 @@ export class SymbolSlashCommandService implements OnModuleInit {
         return;
       }
 
-      await this.watchedSymbolService.create({
-        symbol,
-        buyPrice,
-        stopLossPercent: stopLoss ?? null,
-        takeProfitPercent: takeProfit ?? null,
-        expectBuyPrice: expectBuyPrice,
-      });
+      const existing = await this.watchedSymbolService.findOneOrNull(symbol);
+      const isUpdate = existing != null;
 
+      if (isUpdate) {
+        // Chỉ update những trường được truyền vào
+        const dto: Record<string, unknown> = {};
+        if (buyPrice !== null) dto.buyPrice = buyPrice;
+        if (stopLoss !== undefined) dto.stopLossPercent = stopLoss;
+        if (takeProfit !== undefined) dto.takeProfitPercent = takeProfit;
+        if (expectBuyPrice !== null) dto.expectBuyPrice = expectBuyPrice;
+        await this.watchedSymbolService.update(symbol, dto);
+      } else {
+        await this.watchedSymbolService.create({
+          symbol,
+          buyPrice,
+          stopLossPercent: stopLoss ?? null,
+          takeProfitPercent: takeProfit ?? null,
+          expectBuyPrice: expectBuyPrice,
+        });
+      }
+
+      const verb = isUpdate ? 'Đã cập nhật' : 'Đã thêm';
       const lines: string[] = [
-        `✅ Đã thêm/cập nhật **${symbol}** (${existMap[symbol].organ_name}) vào danh sách theo dõi.`,
+        `✅ ${verb} **${symbol}** (${existMap[symbol].organ_name}) vào danh sách theo dõi.`,
       ];
       if (buyPrice != null)
         lines.push(
@@ -223,14 +237,14 @@ export class SymbolSlashCommandService implements OnModuleInit {
     const fmtPrice = (val: number | undefined) =>
       val != null ? (val / 1000).toLocaleString('vi-VN') : '-';
 
-    const headers = ['CP', 'Current price', 'Stop loss', 'Take profit', 'Expect price', 'Buy price'];
+    const headers = ['CP', 'Stop loss', 'Take profit', 'Expect price', 'Buy price', 'Current price'];
     const rows = sorted.map((s) => [
       s.symbol,
-      fmtPrice(priceMap.get(s.symbol)),
       resolvePercent(s.stopLossPercent, thresholds.stopLossPercent),
       resolvePercent(s.takeProfitPercent, thresholds.takeProfitPercent),
       fmt(s.expectBuyPrice),
       fmt(s.buyPrice),
+      fmtPrice(priceMap.get(s.symbol)),
     ]);
 
     const table = ['```', buildTable(headers, rows), '```'].join('\n');

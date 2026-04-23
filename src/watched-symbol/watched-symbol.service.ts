@@ -66,6 +66,13 @@ export class WatchedSymbolService implements OnModuleInit {
     return this.watchedSymbolModel.find().lean().exec();
   }
 
+  async findOneOrNull(symbol: string): Promise<WatchedSymbol | null> {
+    return this.watchedSymbolModel
+      .findOne({ symbol: symbol.toUpperCase() })
+      .lean()
+      .exec();
+  }
+
   async findOne(symbol: string): Promise<WatchedSymbol> {
     const doc = await this.watchedSymbolModel
       .findOne({ symbol: symbol.toUpperCase() })
