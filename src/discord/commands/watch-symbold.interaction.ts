@@ -237,15 +237,30 @@ export class SymbolSlashCommandService implements OnModuleInit {
     const fmtPrice = (val: number | undefined) =>
       val != null ? (val / 1000).toLocaleString('vi-VN') : '-';
 
-    const headers = ['CP', 'Stop loss', 'Take profit', 'Expect price', 'Buy price', 'Current price'];
-    const rows = sorted.map((s) => [
-      s.symbol,
-      resolvePercent(s.stopLossPercent, thresholds.stopLossPercent),
-      resolvePercent(s.takeProfitPercent, thresholds.takeProfitPercent),
-      fmt(s.expectBuyPrice),
-      fmt(s.buyPrice),
-      fmtPrice(priceMap.get(s.symbol)),
-    ]);
+    const fmtChange = (
+      currentPrice: number | undefined,
+      buyPrice: number | null | undefined,
+    ): string => {
+      if (currentPrice == null || !buyPrice) return '-';
+      const pct = ((currentPrice - buyPrice) / buyPrice) * 100;
+      const sign = pct >= 0 ? '+' : '';
+      const icon = pct >= 0 ? '🔻' : '🔺';
+      return `${icon}${sign}${pct.toFixed(2)}%`;
+    };
+
+    const headers = ['CP', 'Stop loss', 'Take profit', 'Expect price', 'Buy price', 'Current price', 'Change'];
+    const rows = sorted.map((s) => {
+      const currentPrice = priceMap.get(s.symbol);
+      return [
+        s.symbol,
+        resolvePercent(s.stopLossPercent, thresholds.stopLossPercent),
+        resolvePercent(s.takeProfitPercent, thresholds.takeProfitPercent),
+        fmt(s.expectBuyPrice),
+        fmt(s.buyPrice),
+        fmtPrice(currentPrice),
+        fmtChange(currentPrice, s.buyPrice),
+      ];
+    });
 
     const table = ['```', buildTable(headers, rows), '```'].join('\n');
     await interaction.editReply(`📋 **Danh sách cổ phiếu theo dõi (${sorted.length})**\n${table}`);
