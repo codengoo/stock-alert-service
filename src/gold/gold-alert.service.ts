@@ -1,10 +1,8 @@
 import { StockApiService } from '@/shared/stock';
-import { ILocalGoldOrganization } from '@/shared/stock/interfaces';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { APIEmbed, ColorResolvable, EmbedBuilder } from 'discord.js';
 import { DiscordService } from '../discord/discord.service';
-import { buildTable } from '../discord/utils/table.util';
 import { SettingsService } from '../settings/settings.service';
 
 @Injectable()
@@ -17,18 +15,8 @@ export class GoldAlertService {
     private readonly settingsService: SettingsService,
   ) {}
 
-  /** Daily gold price report — every day at 10:00 AM (ICT = UTC+7, so 03:00 UTC) */
-  @Cron('0 3 * * *', { timeZone: 'Asia/Ho_Chi_Minh' })
-  async sendDailyGoldReport() {
-    this.logger.log('Fetching daily gold prices...');
-
-    const discordSettings = await this.settingsService.getDiscordSettings();
-    const channelId = discordSettings.goldChannelId || discordSettings.alertChannelId;
-    if (!channelId) {
-      this.logger.warn('Không có goldChannelId hoặc alertChannelId — bỏ qua báo cáo giá vàng.');
-      return;
-    }
-
+  /** Fetch gold data and build Discord embeds. Returns empty array if no data available. */
+  async buildGoldEmbeds(): Promise<APIEmbed[]> {
     const [localData, globalData] = await Promise.all([
       this.stockApiService.getLocalGold().catch((err) => {
         this.logger.error('Lỗi lấy giá vàng trong nước', err);
@@ -40,10 +28,7 @@ export class GoldAlertService {
       }),
     ]);
 
-    if (!localData && !globalData) {
-      this.logger.warn('Không lấy được dữ liệu giá vàng — bỏ qua.');
-      return;
-    }
+    if (!localData && !globalData) return [];
 
     const now = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     const embeds: APIEmbed[] = [];
@@ -85,58 +70,57 @@ export class GoldAlertService {
     if (localData?.organizations?.length) {
       const orgs = localData.organizations;
 
-      // Find best buy / best sell across all organizations (gold_bar)
-      const bestBuy = orgs.reduce((best: ILocalGoldOrganization | null, org) => {
-        if (org.gold_bar.buy_price == null) return best;
-        if (!best || (best.gold_bar.buy_price ?? 0) < org.gold_bar.buy_price) return org;
-        return best;
-      }, null as ILocalGoldOrganization | null);
-      const bestSell = orgs.reduce((best: ILocalGoldOrganization | null, org) => {
-        if (org.gold_bar.sell_price == null) return best;
-        if (!best || (best.gold_bar.sell_price ?? Infinity) > org.gold_bar.sell_price) return org;
-        return best;
-      }, null as ILocalGoldOrganization | null);
+      const avg = (vals: (number | null | undefined)[]) => {
+        const valid = vals.filter((v): v is number => v != null);
+        return valid.length ? valid.reduce((s, v) => s + v, 0) / valid.length : null;
+      };
 
-      // Build table rows
-      const rows = orgs.map((org) => [
-        org.organization,
-        org.gold_bar.buy_price != null ? org.gold_bar.buy_price.toLocaleString('vi-VN') : '-',
-        org.gold_bar.sell_price != null ? org.gold_bar.sell_price.toLocaleString('vi-VN') : '-',
-        org.gold_ring.buy_price != null ? org.gold_ring.buy_price.toLocaleString('vi-VN') : '-',
-        org.gold_ring.sell_price != null ? org.gold_ring.sell_price.toLocaleString('vi-VN') : '-',
-      ]);
+      const fmtPrice = (val: number | null) =>
+        val != null
+          ? (val / 1000).toLocaleString('vi-VN', { maximumFractionDigits: 2 })
+          : 'N/A';
 
-      const table = buildTable(
-        ['Tổ chức', 'Miếng Mua', 'Miếng Bán', 'Nhẫn Mua', 'Nhẫn Bán'],
-        rows,
-      );
+      const avgBarBuy  = avg(orgs.map((o) => o.gold_bar.buy_price));
+      const avgBarSell = avg(orgs.map((o) => o.gold_bar.sell_price));
+      const avgRingBuy  = avg(orgs.map((o) => o.gold_ring.buy_price));
+      const avgRingSell = avg(orgs.map((o) => o.gold_ring.sell_price));
 
       const localEmbed = new EmbedBuilder()
         .setTitle('🇻🇳 Giá Vàng Trong Nước')
         .setColor(0xf39c12)
-        .setDescription('```\n' + table + '\n```')
         .addFields(
-          {
-            name: '🏆 Mua vào tốt nhất (vàng miếng)',
-            value: bestBuy
-              ? `**${bestBuy.organization}** — ${bestBuy.gold_bar.buy_price!.toLocaleString('vi-VN')} (×1000 VNĐ/lượng)`
-              : 'N/A',
-            inline: false,
-          },
-          {
-            name: '💰 Bán ra thấp nhất (vàng miếng)',
-            value: bestSell
-              ? `**${bestSell.organization}** — ${bestSell.gold_bar.sell_price!.toLocaleString('vi-VN')} (×1000 VNĐ/lượng)`
-              : 'N/A',
-            inline: false,
-          },
+          { name: '🪙 Miếng Mua TB',  value: fmtPrice(avgBarBuy),  inline: true },
+          { name: '🪙 Miếng Bán TB',  value: fmtPrice(avgBarSell), inline: true },
+          { name: '\u200b', value: '\u200b', inline: true },
+          { name: '💍 Nhẫn Mua TB',   value: fmtPrice(avgRingBuy),  inline: true },
+          { name: '💍 Nhẫn Bán TB',   value: fmtPrice(avgRingSell), inline: true },
+          { name: '\u200b', value: '\u200b', inline: true },
         )
-        .setFooter({ text: `Đơn vị: ×1000 VNĐ/lượng  •  Báo cáo lúc ${now}` });
+        .setFooter({ text: `Đơn vị: triệu VNĐ/lượng  •  Báo cáo lúc ${now}` });
 
       embeds.push(localEmbed.toJSON());
     }
 
-    if (embeds.length === 0) return;
+    return embeds;
+  }
+
+  /** Daily gold price report — every day at 10:00 AM ICT */
+  @Cron('0 10 * * *', { timeZone: 'Asia/Ho_Chi_Minh' })
+  async sendDailyGoldReport() {
+    this.logger.log('Fetching daily gold prices...');
+
+    const discordSettings = await this.settingsService.getDiscordSettings();
+    const channelId = discordSettings.goldChannelId || discordSettings.alertChannelId;
+    if (!channelId) {
+      this.logger.warn('Không có goldChannelId hoặc alertChannelId — bỏ qua báo cáo giá vàng.');
+      return;
+    }
+
+    const embeds = await this.buildGoldEmbeds();
+    if (embeds.length === 0) {
+      this.logger.warn('Không lấy được dữ liệu giá vàng — bỏ qua.');
+      return;
+    }
 
     await this.discordService.sendMessage(channelId, { embeds });
     this.logger.log('Đã gửi báo cáo giá vàng hàng ngày lên Discord.');
