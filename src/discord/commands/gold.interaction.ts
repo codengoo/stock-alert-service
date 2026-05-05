@@ -1,9 +1,9 @@
 import { GoldAlertService } from '@/gold/gold-alert.service';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
-    ApplicationCommandOptionType,
-    ApplicationCommandType,
-    ChatInputCommandInteraction,
+  ApplicationCommandOptionType,
+  ApplicationCommandType,
+  ChatInputCommandInteraction,
 } from 'discord.js';
 import { DiscordInteractionService } from '../discord-interaction.service';
 import { DiscordService } from '../discord.service';
@@ -30,6 +30,11 @@ export class GoldSlashCommandService implements OnModuleInit {
             name: 'list',
             description: 'Xem giá vàng trong nước và thế giới ngay bây giờ',
           },
+          {
+            type: ApplicationCommandOptionType.Subcommand,
+            name: 'list-detail',
+            description: 'Xem chi tiết giá vàng nhẫn và vàng miếng của từng tổ chức',
+          },
         ],
       },
     ]);
@@ -45,6 +50,28 @@ export class GoldSlashCommandService implements OnModuleInit {
     const sub = interaction.options.getSubcommand();
     if (sub === 'list') {
       await this.handleList(interaction);
+    } else if (sub === 'list-detail') {
+      await this.handleListDetail(interaction);
+    }
+  }
+
+  private async handleListDetail(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
+    await interaction.deferReply({ ephemeral: false });
+
+    try {
+      const result = await this.goldAlertService.buildGoldDetailEmbeds();
+
+      if (!result) {
+        await interaction.editReply('⚠️ Không lấy được dữ liệu giá vàng. Vui lòng thử lại sau.');
+        return;
+      }
+
+      await interaction.editReply({ embeds: result.embeds, content: result.content });
+    } catch (err) {
+      this.logger.error('Failed to fetch detailed gold prices for slash command', err);
+      await interaction.editReply('❌ Đã xảy ra lỗi khi lấy dữ liệu giá vàng chi tiết.');
     }
   }
 

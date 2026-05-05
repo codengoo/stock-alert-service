@@ -1,8 +1,9 @@
-import { StockApiService } from '@/shared/stock';
+import { ILocalGoldOrganization, StockApiService } from '@/shared/stock';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { APIEmbed, ColorResolvable, EmbedBuilder } from 'discord.js';
 import { DiscordService } from '../discord/discord.service';
+import { buildTable } from '../discord/utils/table.util';
 import { SettingsService } from '../settings/settings.service';
 
 @Injectable()
@@ -102,6 +103,76 @@ export class GoldAlertService {
     }
 
     return embeds;
+  }
+
+  private abbrevOrg(org: ILocalGoldOrganization): string {
+    const slug = org.org_slug.toLowerCase();
+    if (slug.includes('minh-chau') || slug === 'btmc') return 'BTMC';
+    if (slug.includes('manh-hai') || slug === 'btmh') return 'BTMH';
+    if (slug.includes('sjc')) return 'SJC';
+    if (slug.includes('doji')) return 'DOJI';
+    if (slug.includes('pnj')) return 'PNJ';
+    if (slug.includes('phu-quy')) return 'Phú Quý';
+    if (slug.includes('mi-hong') || slug.includes('my-hong')) return 'Mỹ Hồng';
+    if (slug.includes('agribank')) return 'Agribank';
+    const name = org.organization;
+    return name.length > 10 ? name.slice(0, 10) : name;
+  }
+
+  /** Fetch local gold data and build a detailed per-organisation embed + table message. */
+  async buildGoldDetailEmbeds(): Promise<{ embeds: APIEmbed[]; content: string } | null> {
+    const localData = await this.stockApiService.getLocalGold().catch((err) => {
+      this.logger.error('Lỗi lấy giá vàng trong nước', err);
+      return null;
+    });
+
+    if (!localData?.organizations?.length) return null;
+
+    const now = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+    const fmtM = (val: number | null | undefined): string =>
+      val != null ? (val / 1000).toFixed(2) : '-';
+
+    const headers = ['Tổ chức', 'Nhẫn Mua', 'Nhẫn Bán', 'Miếng Mua', 'Miếng Bán'];
+    const rows = localData.organizations.map((o) => [
+      this.abbrevOrg(o),
+      fmtM(o.gold_ring.buy_price),
+      fmtM(o.gold_ring.sell_price),
+      fmtM(o.gold_bar.buy_price),
+      fmtM(o.gold_bar.sell_price),
+    ]);
+
+    const table = buildTable(headers, rows);
+
+    const orgs = localData.organizations;
+
+    const avg = (vals: (number | null | undefined)[]) => {
+      const valid = vals.filter((v): v is number => v != null);
+      return valid.length ? valid.reduce((s, v) => s + v, 0) / valid.length : null;
+    };
+
+    const avgBarBuy   = avg(orgs.map((o) => o.gold_bar.buy_price));
+    const avgBarSell  = avg(orgs.map((o) => o.gold_bar.sell_price));
+    const avgRingBuy  = avg(orgs.map((o) => o.gold_ring.buy_price));
+    const avgRingSell = avg(orgs.map((o) => o.gold_ring.sell_price));
+
+    const embed = new EmbedBuilder()
+      .setTitle('🇻🇳 Giá Vàng Trong Nước — Chi Tiết')
+      .setColor(0xf39c12)
+      .addFields(
+        { name: '🪙 Miếng Mua TB',  value: fmtM(avgBarBuy),   inline: true },
+        { name: '🪙 Miếng Bán TB',  value: fmtM(avgBarSell),  inline: true },
+        { name: '\u200b', value: '\u200b', inline: true },
+        { name: '💍 Nhẫn Mua TB',   value: fmtM(avgRingBuy),  inline: true },
+        { name: '💍 Nhẫn Bán TB',   value: fmtM(avgRingSell), inline: true },
+        { name: '\u200b', value: '\u200b', inline: true },
+      )
+      .setFooter({ text: `Đơn vị: triệu VNĐ/lượng  •  Cập nhật: ${now}` });
+
+    return {
+      embeds: [embed.toJSON()],
+      content: '```\n' + table + '\n```',
+    };
   }
 
   /** Daily gold price report — every day at 10:00 AM ICT */
