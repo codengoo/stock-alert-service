@@ -2,6 +2,7 @@ import { SymbolSlashCommandService } from '@/discord/commands/watch-symbold.inte
 import { StockApiModule } from '@/shared/stock/stock.module';
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { AuditLogModule } from '../audit-log/audit-log.module';
 import { WatchedSymbol, WatchedSymbolSchema } from '../schemas/watched-symbol.schema';
 import { SettingsModule } from '../settings/settings.module';
 import { WatchedSymbolController } from './watched-symbol.controller';
@@ -12,6 +13,7 @@ import { WatchedSymbolService } from './watched-symbol.service';
     MongooseModule.forFeature([
       { name: WatchedSymbol.name, schema: WatchedSymbolSchema },
     ]),
+    AuditLogModule,
     StockApiModule,
     SettingsModule,
   ],

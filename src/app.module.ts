@@ -6,9 +6,10 @@ import { ScheduleModule } from '@nestjs/schedule';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuditLogModule } from './audit-log/audit-log.module';
 import { ApiKeyGuard } from './common/guards/api-key.guard';
-import { SettingsModule } from './settings/settings.module';
 import { DiscordModule } from './discord/discord.module';
+import { SettingsModule } from './settings/settings.module';
 import { StockModule } from './stock/stock.module';
 import { WatchedSymbolModule } from './watched-symbol/watched-symbol.module';
 
@@ -23,6 +24,7 @@ import { WatchedSymbolModule } from './watched-symbol/watched-symbol.module';
       }),
       inject: [ConfigService],
     }),
+    AuditLogModule,
     DiscordModule,
     SettingsModule,
     WatchedSymbolModule,

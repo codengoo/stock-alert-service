@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, Model } from 'mongoose';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { SettingDocument, SettingEntity } from '../schemas/setting.schema';
 import { DEFAULT_SETTING } from './constants';
 import { ISettings } from './interfaces';
@@ -10,8 +11,10 @@ import { SettingModelService } from './setting-model.service';
 export class SettingsService extends SettingModelService<ISettings> {
   constructor(
     @InjectModel(SettingEntity.name) settingModel: Model<SettingDocument>,
+    @InjectConnection() connection: Connection,
+    auditLogService: AuditLogService,
   ) {
-    super(settingModel, DEFAULT_SETTING);
+    super(settingModel, connection, auditLogService, DEFAULT_SETTING);
   }
 
   async getAll(): Promise<ISettings> {
