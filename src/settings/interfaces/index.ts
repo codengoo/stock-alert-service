@@ -11,4 +11,5 @@ export interface IThresholdSettings {
 
 export interface IDiscordSettings {
     alertChannelId: string;
+    goldChannelId: string;
 }

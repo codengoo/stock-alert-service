@@ -8,5 +8,6 @@ export const DEFAULT_SETTING: ISettings = {
     },
     discord: {
         alertChannelId: '1496041524411236432',
+        goldChannelId: '1501069220128096266',
     },
 };

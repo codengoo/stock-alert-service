@@ -58,3 +58,32 @@ export interface ISymbolHistory {
   close: number;
   volume: number;
 }
+
+export interface IGoldPrice {
+  buy_price: number | null;
+  sell_price: number | null;
+}
+
+export interface ILocalGoldOrganization {
+  organization: string;
+  org_slug: string;
+  updated_at: string;
+  gold_bar: IGoldPrice;
+  gold_ring: IGoldPrice;
+  unit: string;
+}
+
+export interface ILocalGoldResponse {
+  organizations: ILocalGoldOrganization[];
+}
+
+export interface IGlobalGoldResponse {
+  updated_at: string;
+  price_usd_per_ounce: number | null;
+  change_usd: number | null;
+  change_pct: number | null;
+  price_vnd_per_ounce: number | null;
+  price_vnd_per_luong: number | null;
+  unit_usd: string;
+  unit_vnd: string;
+}

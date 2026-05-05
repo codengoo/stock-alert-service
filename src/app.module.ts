@@ -9,6 +9,7 @@ import { AppService } from './app.service';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { ApiKeyGuard } from './common/guards/api-key.guard';
 import { DiscordModule } from './discord/discord.module';
+import { GoldModule } from './gold/gold.module';
 import { SettingsModule } from './settings/settings.module';
 import { StockModule } from './stock/stock.module';
 import { WatchedSymbolModule } from './watched-symbol/watched-symbol.module';
@@ -29,6 +30,7 @@ import { WatchedSymbolModule } from './watched-symbol/watched-symbol.module';
     SettingsModule,
     WatchedSymbolModule,
     StockModule,
+    GoldModule,
   ],
   controllers: [AppController],
   providers: [

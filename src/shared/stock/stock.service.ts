@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import {
   ESymbolHistoryInterval,
+  IGlobalGoldResponse,
+  ILocalGoldResponse,
   ISymbolHistory,
   ISymbolHistoryFilter,
   ISymbolName,
@@ -66,5 +68,15 @@ export class StockApiService {
     });
 
     return response.data.data;
+  }
+
+  public async getLocalGold(): Promise<ILocalGoldResponse> {
+    const response = await this.client.get<ILocalGoldResponse>('/gold/local');
+    return response.data;
+  }
+
+  public async getGlobalGold(): Promise<IGlobalGoldResponse> {
+    const response = await this.client.get<IGlobalGoldResponse>('/gold/global');
+    return response.data;
   }
 }
