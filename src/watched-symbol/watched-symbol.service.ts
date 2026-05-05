@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { Connection, Model } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { DiscordInteractionService } from '../discord/discord-interaction.service';
 import { WatchedSymbol, WatchedSymbolDocument } from '../schemas/watched-symbol.schema';
@@ -13,7 +13,6 @@ export class WatchedSymbolService implements OnModuleInit {
   constructor(
     @InjectModel(WatchedSymbol.name)
     private readonly watchedSymbolModel: Model<WatchedSymbolDocument>,
-    @InjectConnection() private readonly connection: Connection,
     private readonly discordInteractionService: DiscordInteractionService,
     private readonly auditLogService: AuditLogService,
   ) {}
@@ -30,31 +29,17 @@ export class WatchedSymbolService implements OnModuleInit {
       if (!ms) return;
 
       const snoozeUntil = new Date(Date.now() + ms);
-      const session = await this.connection.startSession();
-      try {
-        session.startTransaction();
-        await this.watchedSymbolModel.updateOne(
-          { symbol: symbol.toUpperCase() },
-          { $set: { snoozeUntil } },
-          { session },
-        );
-        await this.auditLogService.log(
-          {
-            action: 'snooze',
-            collection: 'watched_symbols',
-            target: symbol.toUpperCase(),
-            after: { snoozeUntil, duration: durationValue },
-            meta: { source: 'discord' },
-          },
-          session,
-        );
-        await session.commitTransaction();
-      } catch (error) {
-        await session.abortTransaction();
-        throw error;
-      } finally {
-        await session.endSession();
-      }
+      await this.watchedSymbolModel.updateOne(
+        { symbol: symbol.toUpperCase() },
+        { $set: { snoozeUntil } },
+      );
+      await this.auditLogService.log({
+        action: 'snooze',
+        collection: 'watched_symbols',
+        target: symbol.toUpperCase(),
+        after: { snoozeUntil, duration: durationValue },
+        meta: { source: 'discord' },
+      });
 
       const label = SNOOZE_LABEL[durationValue] ?? durationValue;
       await interaction.reply({
@@ -66,49 +51,36 @@ export class WatchedSymbolService implements OnModuleInit {
 
   async create(dto: CreateWatchedSymbolDto): Promise<WatchedSymbol> {
     const symbol = dto.symbol.toUpperCase();
-    const session = await this.connection.startSession();
-    try {
-      session.startTransaction();
-      const existing = await this.watchedSymbolModel
-        .findOne({ symbol }, null, { session })
-        .lean()
-        .exec();
-      const result = await this.watchedSymbolModel
-        .findOneAndUpdate(
-          { symbol },
-          {
-            $set: {
-              active: dto.active ?? true,
-              note: dto.note ?? null,
-              alertThresholdPercent: dto.alertThresholdPercent ?? null,
-              stopLossPercent: dto.stopLossPercent ?? null,
-              takeProfitPercent: dto.takeProfitPercent ?? null,
-              buyPrice: dto.buyPrice ?? null,
-              expectBuyPrice: dto.expectBuyPrice ?? null,
-            },
-          },
-          { new: true, upsert: true, session },
-        )
-        .lean()
-        .exec();
-      await this.auditLogService.log(
+    const existing = await this.watchedSymbolModel
+      .findOne({ symbol })
+      .lean()
+      .exec();
+    const result = await this.watchedSymbolModel
+      .findOneAndUpdate(
+        { symbol },
         {
-          action: existing ? 'update' : 'create',
-          collection: 'watched_symbols',
-          target: symbol,
-          before: existing ? (existing as unknown as Record<string, unknown>) : undefined,
-          after: result as unknown as Record<string, unknown>,
+          $set: {
+            active: dto.active ?? true,
+            note: dto.note ?? null,
+            alertThresholdPercent: dto.alertThresholdPercent ?? null,
+            stopLossPercent: dto.stopLossPercent ?? null,
+            takeProfitPercent: dto.takeProfitPercent ?? null,
+            buyPrice: dto.buyPrice ?? null,
+            expectBuyPrice: dto.expectBuyPrice ?? null,
+          },
         },
-        session,
-      );
-      await session.commitTransaction();
-      return result;
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      await session.endSession();
-    }
+        { new: true, upsert: true },
+      )
+      .lean()
+      .exec();
+    await this.auditLogService.log({
+      action: existing ? 'update' : 'create',
+      collection: 'watched_symbols',
+      target: symbol,
+      before: existing ? (existing as unknown as Record<string, unknown>) : undefined,
+      after: result as unknown as Record<string, unknown>,
+    });
+    return result;
   }
 
   async findAll(): Promise<WatchedSymbol[]> {
@@ -147,135 +119,83 @@ export class WatchedSymbolService implements OnModuleInit {
     if ('buyPrice' in dto) updateFields.buyPrice = dto.buyPrice ?? null;
     if ('expectBuyPrice' in dto) updateFields.expectBuyPrice = dto.expectBuyPrice ?? null;
 
-    const session = await this.connection.startSession();
-    try {
-      session.startTransaction();
-      const before = await this.watchedSymbolModel
-        .findOne({ symbol: symbol.toUpperCase() }, null, { session })
-        .lean()
-        .exec();
-      const doc = await this.watchedSymbolModel
-        .findOneAndUpdate(
-          { symbol: symbol.toUpperCase() },
-          { $set: updateFields },
-          { new: true, session },
-        )
-        .lean()
-        .exec();
-      if (!doc) throw new NotFoundException(`Symbol ${symbol} not found`);
-      await this.auditLogService.log(
-        {
-          action: 'update',
-          collection: 'watched_symbols',
-          target: symbol.toUpperCase(),
-          before: before ? (before as unknown as Record<string, unknown>) : undefined,
-          after: doc as unknown as Record<string, unknown>,
-        },
-        session,
-      );
-      await session.commitTransaction();
-      return doc;
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      await session.endSession();
-    }
+    const before = await this.watchedSymbolModel
+      .findOne({ symbol: symbol.toUpperCase() })
+      .lean()
+      .exec();
+    const doc = await this.watchedSymbolModel
+      .findOneAndUpdate(
+        { symbol: symbol.toUpperCase() },
+        { $set: updateFields },
+        { new: true },
+      )
+      .lean()
+      .exec();
+    if (!doc) throw new NotFoundException(`Symbol ${symbol} not found`);
+    await this.auditLogService.log({
+      action: 'update',
+      collection: 'watched_symbols',
+      target: symbol.toUpperCase(),
+      before: before ? (before as unknown as Record<string, unknown>) : undefined,
+      after: doc as unknown as Record<string, unknown>,
+    });
+    return doc;
   }
 
   async remove(symbol: string): Promise<void> {
-    const session = await this.connection.startSession();
-    try {
-      session.startTransaction();
-      const before = await this.watchedSymbolModel
-        .findOne({ symbol: symbol.toUpperCase() }, null, { session })
-        .lean()
-        .exec();
-      const result = await this.watchedSymbolModel
-        .deleteOne({ symbol: symbol.toUpperCase() }, { session })
-        .exec();
-      if (result.deletedCount === 0) throw new NotFoundException(`Symbol ${symbol} not found`);
-      await this.auditLogService.log(
-        {
-          action: 'delete',
-          collection: 'watched_symbols',
-          target: symbol.toUpperCase(),
-          before: before ? (before as unknown as Record<string, unknown>) : undefined,
-        },
-        session,
-      );
-      await session.commitTransaction();
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      await session.endSession();
-    }
+    const before = await this.watchedSymbolModel
+      .findOne({ symbol: symbol.toUpperCase() })
+      .lean()
+      .exec();
+    const result = await this.watchedSymbolModel
+      .deleteOne({ symbol: symbol.toUpperCase() })
+      .exec();
+    if (result.deletedCount === 0) throw new NotFoundException(`Symbol ${symbol} not found`);
+    await this.auditLogService.log({
+      action: 'delete',
+      collection: 'watched_symbols',
+      target: symbol.toUpperCase(),
+      before: before ? (before as unknown as Record<string, unknown>) : undefined,
+    });
   }
 
   async snooze(symbol: string, duration: SnoozeDuration): Promise<WatchedSymbol> {
     const ms = SNOOZE_DURATION_MS[duration];
     const snoozeUntil = new Date(Date.now() + ms);
-    const session = await this.connection.startSession();
-    try {
-      session.startTransaction();
-      const doc = await this.watchedSymbolModel
-        .findOneAndUpdate(
-          { symbol: symbol.toUpperCase() },
-          { $set: { snoozeUntil } },
-          { new: true, session },
-        )
-        .lean()
-        .exec();
-      if (!doc) throw new NotFoundException(`Symbol ${symbol} not found`);
-      await this.auditLogService.log(
-        {
-          action: 'snooze',
-          collection: 'watched_symbols',
-          target: symbol.toUpperCase(),
-          after: { snoozeUntil, duration },
-        },
-        session,
-      );
-      await session.commitTransaction();
-      return doc;
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      await session.endSession();
-    }
+    const doc = await this.watchedSymbolModel
+      .findOneAndUpdate(
+        { symbol: symbol.toUpperCase() },
+        { $set: { snoozeUntil } },
+        { new: true },
+      )
+      .lean()
+      .exec();
+    if (!doc) throw new NotFoundException(`Symbol ${symbol} not found`);
+    await this.auditLogService.log({
+      action: 'snooze',
+      collection: 'watched_symbols',
+      target: symbol.toUpperCase(),
+      after: { snoozeUntil, duration },
+    });
+    return doc;
   }
 
   async clearSnooze(symbol: string): Promise<WatchedSymbol> {
-    const session = await this.connection.startSession();
-    try {
-      session.startTransaction();
-      const doc = await this.watchedSymbolModel
-        .findOneAndUpdate(
-          { symbol: symbol.toUpperCase() },
-          { $set: { snoozeUntil: null } },
-          { new: true, session },
-        )
-        .lean()
-        .exec();
-      if (!doc) throw new NotFoundException(`Symbol ${symbol} not found`);
-      await this.auditLogService.log(
-        {
-          action: 'clear_snooze',
-          collection: 'watched_symbols',
-          target: symbol.toUpperCase(),
-        },
-        session,
-      );
-      await session.commitTransaction();
-      return doc;
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      await session.endSession();
-    }
+    const doc = await this.watchedSymbolModel
+      .findOneAndUpdate(
+        { symbol: symbol.toUpperCase() },
+        { $set: { snoozeUntil: null } },
+        { new: true },
+      )
+      .lean()
+      .exec();
+    if (!doc) throw new NotFoundException(`Symbol ${symbol} not found`);
+    await this.auditLogService.log({
+      action: 'clear_snooze',
+      collection: 'watched_symbols',
+      target: symbol.toUpperCase(),
+    });
+    return doc;
   }
 
   /** Find all active, non-snoozed symbols (used by the cron scanner) */
